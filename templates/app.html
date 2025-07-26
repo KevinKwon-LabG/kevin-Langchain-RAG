@@ -326,6 +326,8 @@
             margin-right: 20px;
         }
 
+
+
         .chat-input-area {
             padding: 20px;
             background: rgba(255, 255, 255, 0.9);
@@ -871,17 +873,53 @@
             // AI 메시지인 경우 모델명 포함
             const roleText = role === 'user' ? '👤 사용자' : `🤖 AI ${modelName || selectedModel || ''}`;
             
+            // AI 응답에서 링크 후처리
+            let processedContent = content;
+            if (role === 'assistant') {
+                processedContent = processLinksInResponse(content);
+            }
+            
             messageDiv.innerHTML = `
                 <div class="message-header">
                     <span class="message-role ${role}">${roleText}</span>
                     <span class="message-time">${time}</span>
                 </div>
-                <div class="message-content">${content}</div>
+                <div class="message-content">${processedContent}</div>
             `;
             
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
+
+        // AI 응답에서 링크 처리
+        function processLinksInResponse(content) {
+            // 이미 HTML 링크가 있는 경우 그대로 반환
+            if (content.includes('<a href=')) {
+                return content;
+            }
+            
+            // 중복된 URL 제거 (같은 URL이 연속으로 나오는 경우)
+            const urlPattern = /(https?:\/\/[^\s]+)/g;
+            const urls = content.match(urlPattern) || [];
+            const uniqueUrls = [...new Set(urls)];
+            
+            let processedContent = content;
+            
+            // 각 고유 URL에 대해 처리
+            uniqueUrls.forEach(url => {
+                const linkText = url.replace('https://', '').replace('http://', '');
+                const displayText = linkText.length > 50 ? linkText.substring(0, 47) + '...' : linkText;
+                const linkHtml = `<a href="${url}" target="_blank" style="color: #3498db; text-decoration: underline; cursor: pointer;">${displayText}</a>`;
+                
+                // 모든 동일한 URL을 클릭 가능한 링크로 교체
+                const urlRegex = new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+                processedContent = processedContent.replace(urlRegex, linkHtml);
+            });
+            
+            return processedContent;
+        }
+
+
 
         // 키보드 입력 처리
         function handleInputKeydown(event) {

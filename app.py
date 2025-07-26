@@ -11,6 +11,20 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
+# 시간 파서 및 웹 검색 서비스 import
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from src.utils.time_parser import time_parser
+    from src.services.websearch_service import websearch_service
+    TIME_PARSER_AVAILABLE = True
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"시간 파서 또는 웹 검색 서비스를 불러올 수 없습니다: {e}")
+    TIME_PARSER_AVAILABLE = False
+
 # FastAPI 앱 생성
 app = FastAPI(
     title="Ollama Conversation Interface",
@@ -119,6 +133,33 @@ def build_conversation_prompt(session_id, new_message, system_prompt=None):
     if system_prompt:
         conversation += f"System: {system_prompt}\n\n"
     
+    # 시간 정보 파싱 및 웹 검색
+    web_search_context = ""
+    time_info = None
+    if TIME_PARSER_AVAILABLE:
+        try:
+            # 시간 정보 파싱
+            time_info = time_parser.parse_time_expressions(new_message)
+            time_context = time_parser.get_time_context(new_message)
+            
+            # 시간 정보가 있으면 시스템 프롬프트에 시간 지시사항 추가
+            if time_info.get('time_expressions'):
+                current_date = time_info['current_time'].strftime('%Y년 %m월 %d일')
+                time_instruction = f"\nSystem: 현재 시간은 {current_date}입니다. 시간 관련 질문에 답할 때는 이 날짜를 기준으로 답변하세요.\n\n"
+                conversation += time_instruction
+            
+            # 웹 검색 실행
+            if time_info['time_expressions']:
+                logger.info(f"시간 정보 발견: {time_info['time_expressions']}")
+                web_search_result = websearch_service.search_web(new_message)
+                if web_search_result and "검색 중 오류가 발생했습니다" not in web_search_result:
+                    # 시간 정보를 더 명확하게 전달
+                    current_date = time_info['current_time'].strftime('%Y년 %m월 %d일')
+                    web_search_context = f"\n\n[중요: 현재 시간은 {current_date}입니다]\n[실시간 웹 검색 결과]\n{web_search_result}\n\n[지시사항: 위의 웹 검색 결과를 바탕으로 사용자의 질문에 답변하세요. 검색 결과에 관련 정보가 있으면 그것을 활용하고, 없으면 그 사실을 명시하세요.]\n"
+                    logger.info("웹 검색 결과를 프롬프트에 추가했습니다.")
+        except Exception as e:
+            logger.error(f"시간 파싱 또는 웹 검색 중 오류: {e}")
+    
     # 이전 대화 히스토리 추가
     for msg in messages[-10:]:  # 최근 10개 메시지만 포함 (컨텍스트 길이 제한)
         if msg['role'] == 'user':
@@ -127,7 +168,10 @@ def build_conversation_prompt(session_id, new_message, system_prompt=None):
             conversation += f"Assistant: {msg['content']}\n\n"
     
     # 새로운 사용자 메시지 추가
-    conversation += f"Human: {new_message}\n\nAssistant: "
+    if web_search_context:
+        conversation += f"Human: {new_message}\n\n{web_search_context}\nAssistant: "
+    else:
+        conversation += f"Human: {new_message}\n\nAssistant: "
     
     return conversation
 
