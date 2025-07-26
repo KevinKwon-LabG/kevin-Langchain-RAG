@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama 대화형 인터페이스</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 20px 30px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+
+        .main-layout {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: rgba(248, 249, 250, 0.9);
+            border-right: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow-y: auto;
+            max-height: calc(100vh - 120px);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+        }
+
+        .model-selector {
+            margin-bottom: 20px;
+        }
+
+        .model-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+        }
+
+        .model-card {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .model-card:hover {
+            border-color: #3498db;
+            transform: translateY(-1px);
+        }
+
+        .model-card.selected {
+            border-color: #3498db;
+            background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+            position: relative;
+        }
+        
+        .model-card.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #3498db;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .model-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9rem;
+            margin-bottom: 3px;
+        }
+
+        .model-size {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+        }
+
+        .session-list-section {
+            padding: 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .session-item {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .session-item:hover {
+            border-color: #3498db;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
+        }
+
+        .session-preview {
+            font-size: 0.9rem;
+            color: #2c3e50;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .session-info-small {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #7f8c8d;
+        }
+
+        .session-time {
+            color: #95a5a6;
+        }
+
+        .session-count {
+            color: #3498db;
+            font-weight: 500;
+        }
+
+        .no-sessions {
+            text-align: center;
+            color: #95a5a6;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        .chat-controls {
+            padding: 20px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #95a5a6, #7f8c8d);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .settings-section {
+            padding: 20px;
+        }
+
+        .settings-group {
+            margin-bottom: 15px;
+        }
+
+        .settings-group label {
+            display: block;
+            font-weight: 600;
+            color: #34495e;
+            margin-bottom: 5px;
+            font-size: 0.9rem;
+        }
+
+        .settings-group input,
+        .settings-group select,
+        .settings-group textarea {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .settings-group textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .message-role {
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-right: 10px;
+        }
+
+        .message-role.user {
+            background: #3498db;
+            color: white;
+        }
+
+        .message-role.assistant {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .message-time {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+        }
+
+        .message-content {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .user-message .message-content {
+            background: #e3f2fd;
+            margin-left: 20px;
+        }
+
+        .assistant-message .message-content {
+            background: #f1f8e9;
+            margin-right: 20px;
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            flex-shrink: 0;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ecf0f1;
+            border-radius: 12px;
+            font-size: 1rem;
+            resize: vertical;
+            min-height: 50px;
+            max-height: 120px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .send-btn {
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .send-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
+        }
+
+        .send-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .typing-indicator {
+            display: none;
+            padding: 15px;
+            color: #7f8c8d;
+            font-style: italic;
+            text-align: center;
+        }
+
+        .typing-indicator.active {
+            display: block;
+        }
+
+        .session-info {
+            padding: 10px 20px;
+            background: rgba(52, 152, 219, 0.1);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            font-size: 0.9rem;
+            color: #2c3e50;
+        }
+
+        .empty-chat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            color: #7f8c8d;
+            text-align: center;
+        }
+
+        .empty-chat-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .collapsible-section {
+            margin-bottom: 15px;
+        }
+
+        .collapsible-header,
+        .sidebar-header h3,
+        .session-list-section .collapsible-header {
+            font-family: inherit;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #2c3e50;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 0;
+            user-select: none;
+            cursor: pointer;
+        }
+        .sidebar-header h3 {
+            margin-bottom: 0;
+            background: none;
+            padding: 0;
+            border-radius: 0;
+        }
+        
+        .settings-section .collapsible-header {
+            text-align: right;
+        }
+
+        .collapsible-content {
+            height: 0;
+            overflow: hidden;
+            transition: height 0.3s ease;
+        }
+
+        .collapsible-content.expanded {
+            height: auto;
+            padding-top: 10px;
+            overflow: visible;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                width: 250px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-layout {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: auto;
+                max-height: 300px;
+                order: 2;
+            }
+            
+            .chat-area {
+                order: 1;
+                min-height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💬 Ollama 대화형 인터페이스</h1>
+            <p>AI와 자연스러운 대화를 나눠보세요</p>
+        </div>
+
+        <div class="main-layout">
+            <!-- 사이드바 -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h3>🤖 모델 선택</h3>
+                    <div class="model-selector">
+                        <div class="model-grid" id="modelGrid">
+                            <!-- 모델 카드들이 여기에 동적으로 생성됩니다 -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-controls">
+                    <button class="btn btn-primary" onclick="startNewChat()">💬 새 대화 시작</button>
+                    <button class="btn btn-secondary" onclick="clearCurrentChat()">🗑️ 현재 대화 지우기</button>
+                </div>
+
+                <!-- 고급 설정 (접을 수 있음) -->
+                <div class="settings-section">
+                    <div class="collapsible-section">
+                        <div class="collapsible-header" onclick="toggleCollapsible(this)" style="text-align: right;">⚙️ 고급 설정</div>
+                        <div class="collapsible-content">
+                            <div class="settings-group">
+                                <label for="temperature">Temperature (0-2)</label>
+                                <input type="number" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                            </div>
+
+                            <div class="settings-group">
+                                <label for="top_p">Top P (0-1)</label>
+                                <input type="number" id="top_p" min="0" max="1" step="0.1" value="0.9">
+                            </div>
+
+                            <div class="settings-group">
+                                <label for="top_k">Top K</label>
+                                <input type="number" id="top_k" min="1" value="30">
+                            </div>
+
+                            <div class="settings-group">
+                                <label for="num_predict">최대 토큰 수</label>
+                                <select id="num_predict">
+                                    <option value="256">256</option>
+                                    <option value="512" selected>512</option>
+                                    <option value="1024">1024</option>
+                                    <option value="2048">2048</option>
+                                </select>
+                            </div>
+
+                            <div class="settings-group">
+                                <label for="system">시스템 프롬프트</label>
+                                <textarea id="system" placeholder="You are a helpful assistant.">You are a helpful assistant.</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 세션 목록 -->
+                <div class="session-list-section">
+                    <h3>📚 대화 기록</h3>
+                    <div id="sessionList">
+                        <!-- 세션 목록이 여기에 동적으로 생성됩니다 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 채팅 영역 -->
+            <div class="chat-area">
+                <div class="session-info" id="sessionInfo">
+                    새로운 대화를 시작하세요
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <div class="empty-chat">
+                        <div class="empty-chat-icon">💭</div>
+                        <h3>대화를 시작해보세요!</h3>
+                        <p>아래 입력창에 메시지를 입력하거나 새 대화를 시작하세요.</p>
+                    </div>
+                </div>
+
+                <div class="typing-indicator" id="typingIndicator">
+                    🤖 AI가 응답을 생성하고 있습니다...
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="input-container">
+                        <textarea 
+                            id="chatInput" 
+                            class="chat-input" 
+                            placeholder="메시지를 입력하세요... (Shift+Enter로 줄바꿈, Enter로 전송)"
+                            onkeydown="handleInputKeydown(event)"
+                        ></textarea>
+                        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                            📤 전송
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let currentSessionId = null;
+        let selectedModel = '';
+        let isGenerating = false;
+
+        // 모델 목록
+        const models = [
+            { name: 'gemma3:12b-it-qat', size: '8.9 GB', id: '5d4fa005e7bb' },
+            { name: 'deepseek-v2:16b-lite-chat-q8_0', size: '16 GB', id: '1d62ef756269' },
+            { name: 'qwen3:14b-q8_0', size: '15 GB', id: '304bf7349c71' },
+            { name: 'deepseek-r1:14b', size: '9.0 GB', id: 'c333b7232bdb' },
+            { name: 'llama3.2-vision:11b-instruct-q4_K_M', size: '7.8 GB', id: '6f2f9757ae97' },
+            { name: 'llama3.1:8b', size: '4.9 GB', id: '46e0c10c039e' }
+        ];
+
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', async () => {
+            createModelGrid();
+            await loadModels();
+            checkServerStatus();
+            await loadSessions();
+            startNewChat();
+        });
+
+        // 모델 그리드 생성
+        function createModelGrid() {
+            const modelGrid = document.getElementById('modelGrid');
+            models.forEach((model, index) => {
+                const card = document.createElement('div');
+                card.className = 'model-card';
+                card.onclick = () => selectModel(model.name, card);
+                
+                card.innerHTML = `
+                    <div class="model-name">${model.name}</div>
+                    <div class="model-size">💾 ${model.size}</div>
+                `;
+                
+                modelGrid.appendChild(card);
+                
+                // 첫 번째 모델을 기본 선택
+                if (index === 0) {
+                    selectModel(model.name, card);
+                }
+            });
+        }
+
+        // 모델 선택
+        function selectModel(modelName, cardElement) {
+            // 이전 선택 해제
+            document.querySelectorAll('.model-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // 새로 선택
+            cardElement.classList.add('selected');
+            selectedModel = modelName;
+            
+            // 환영 메시지 업데이트 (대화가 비어있는 경우에만)
+            updateWelcomeMessageModel();
+        }
+
+        // 실제 모델 목록 로드
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/models');
+                const data = await response.json();
+                
+                if (data.models && data.models.length > 0) {
+                    const modelGrid = document.getElementById('modelGrid');
+                    modelGrid.innerHTML = '';
+                    
+                    data.models.forEach((model, index) => {
+                        const card = document.createElement('div');
+                        card.className = 'model-card';
+                        card.onclick = () => selectModel(model.name, card);
+                        
+                        card.innerHTML = `
+                            <div class="model-name">${model.name}</div>
+                            <div class="model-size">💾 ${model.size}</div>
+                        `;
+                        
+                        modelGrid.appendChild(card);
+                        
+                        if (index === 0) {
+                            selectModel(model.name, card);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('모델 목록을 가져올 수 없습니다:', error);
+                // 에러 시 기본 모델 선택
+                if (models.length > 0) {
+                    selectedModel = models[0].name;
+                }
+            }
+        }
+
+        // 서버 상태 확인
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                
+                if (!data.ollama_connected) {
+                    console.warn('Ollama 서버에 연결할 수 없습니다.');
+                }
+            } catch (error) {
+                console.error('백엔드 서버에 연결할 수 없습니다:', error);
+            }
+        }
+
+        // 새 대화 시작
+        async function startNewChat() {
+            try {
+                const response = await fetch('/api/sessions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                const data = await response.json();
+                currentSessionId = data.session_id;
+                
+                // UI 업데이트
+                document.getElementById('sessionInfo').textContent = `세션: ${currentSessionId}`;
+                clearChatMessages();
+                
+                // 환영 메시지 표시
+                showWelcomeMessage();
+                
+                // 세션 목록 새로고침
+                await loadSessions();
+                
+            } catch (error) {
+                console.error('새 대화 시작 실패:', error);
+            }
+        }
+
+        // 현재 대화 지우기
+        async function clearCurrentChat() {
+            if (currentSessionId) {
+                try {
+                    await fetch(`/api/sessions/${currentSessionId}`, {
+                        method: 'DELETE'
+                    });
+                    await startNewChat();
+                } catch (error) {
+                    console.error('대화 삭제 실패:', error);
+                }
+            } else {
+                // 세션이 없는 경우 환영 메시지만 표시
+                showWelcomeMessage();
+            }
+        }
+
+        // 채팅 메시지 영역 지우기
+        function clearChatMessages() {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = `
+                <div class="empty-chat">
+                    <div class="empty-chat-icon">💭</div>
+                    <h3>대화를 시작해보세요!</h3>
+                    <p>선택된 모델: <strong>${selectedModel || '모델을 선택해주세요'}</strong></p>
+                    <p>아래 입력창에 메시지를 입력하세요.</p>
+                </div>
+            `;
+        }
+
+        // 환영 메시지 표시
+        function showWelcomeMessage() {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = `
+                <div class="empty-chat">
+                    <div class="empty-chat-icon">🤖</div>
+                    <h3>안녕하세요!</h3>
+                    <p>선택된 모델: <strong>${selectedModel || '모델을 선택해주세요'}</strong></p>
+                    <p>무엇을 도와드릴까요?</p>
+                </div>
+            `;
+        }
+        
+        // 환영 메시지 업데이트 (모델 정보만)
+        function updateWelcomeMessageModel() {
+            const emptyChat = document.querySelector('.empty-chat');
+            if (emptyChat) {
+                const modelInfo = emptyChat.querySelector('p strong');
+                if (modelInfo) {
+                    modelInfo.textContent = selectedModel || '모델을 선택해주세요';
+                }
+            }
+        }
+
+        // 세션 목록 로드
+        async function loadSessions() {
+            try {
+                const response = await fetch('/api/sessions');
+                const data = await response.json();
+                
+                const sessionList = document.getElementById('sessionList');
+                sessionList.innerHTML = '';
+                
+                if (data.sessions && data.sessions.length > 0) {
+                    // 빈 세션 필터링
+                    const validSessions = data.sessions.filter(session => {
+                        return session.preview && 
+                               session.preview.trim() !== "" && 
+                               !session.preview.includes("Empty conversation") &&
+                               session.message_count > 0;
+                    });
+                    
+                    if (validSessions.length > 0) {
+                        validSessions.forEach(session => {
+                            const sessionItem = document.createElement('div');
+                            sessionItem.className = 'session-item';
+                            sessionItem.onclick = () => loadSession(session.session_id);
+                            
+                            sessionItem.innerHTML = `
+                                <div class="session-preview">${session.preview}</div>
+                                <div class="session-info-small">
+                                    <span class="session-time">${new Date(session.last_active).toLocaleString()}</span>
+                                    <span class="session-count">${session.message_count}개 메시지</span>
+                                </div>
+                            `;
+                            
+                            sessionList.appendChild(sessionItem);
+                        });
+                    } else {
+                        sessionList.innerHTML = '<div class="no-sessions">대화 기록이 없습니다.</div>';
+                    }
+                } else {
+                    sessionList.innerHTML = '<div class="no-sessions">대화 기록이 없습니다.</div>';
+                }
+            } catch (error) {
+                console.error('세션 목록을 가져올 수 없습니다:', error);
+            }
+        }
+
+        // 특정 세션 로드
+        async function loadSession(sessionId) {
+            try {
+                const response = await fetch(`/api/sessions/${sessionId}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentSessionId = sessionId;
+                    document.getElementById('sessionInfo').textContent = `세션: ${sessionId}`;
+                    
+                    // 채팅 메시지 영역 지우기
+                    const chatMessages = document.getElementById('chatMessages');
+                    chatMessages.innerHTML = '';
+                    
+                    // 메시지들 로드
+                    data.messages.forEach(msg => {
+                        addMessage(msg.role, msg.content, msg.timestamp, msg.model);
+                    });
+                    
+                    // 세션 목록 새로고침
+                    await loadSessions();
+                }
+            } catch (error) {
+                console.error('세션 로드 실패:', error);
+            }
+        }
+
+        // 메시지 추가
+        function addMessage(role, content, timestamp = null, modelName = null) {
+            const chatMessages = document.getElementById('chatMessages');
+            
+            // 첫 메시지인 경우 empty-chat 제거
+            const emptyChat = chatMessages.querySelector('.empty-chat');
+            if (emptyChat) {
+                emptyChat.remove();
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            
+            const time = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+            
+            // AI 메시지인 경우 모델명 포함
+            const roleText = role === 'user' ? '👤 사용자' : `🤖 AI ${modelName || selectedModel || ''}`;
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="message-role ${role}">${roleText}</span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-content">${content}</div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 키보드 입력 처리
+        function handleInputKeydown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // 메시지 전송
+        async function sendMessage() {
+            const chatInput = document.getElementById('chatInput');
+            const message = chatInput.value.trim();
+            
+            if (!message || !selectedModel || isGenerating) {
+                return;
+            }
+
+            if (!currentSessionId) {
+                await startNewChat();
+            }
+
+            // UI 업데이트
+            isGenerating = true;
+            updateSendButton(true);
+            
+            // 사용자 메시지 추가
+            addMessage('user', message);
+            chatInput.value = '';
+            
+            // 타이핑 인디케이터 표시
+            showTypingIndicator(true);
+
+            // 파라미터 수집
+            const params = {
+                session_id: currentSessionId,
+                model: selectedModel,
+                message: message,
+                system: document.getElementById('system').value.trim() || 'You are a helpful assistant.',
+                options: {
+                    temperature: parseFloat(document.getElementById('temperature').value),
+                    top_p: parseFloat(document.getElementById('top_p').value),
+                    top_k: parseInt(document.getElementById('top_k').value),
+                    num_predict: parseInt(document.getElementById('num_predict').value)
+                }
+            };
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(params)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let assistantResponse = '';
+                let assistantMessageDiv = null;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.error) {
+                                    showTypingIndicator(false);
+                                    addMessage('assistant', `❌ 오류: ${data.error}`, null, selectedModel);
+                                    break;
+                                }
+                                
+                                if (data.response) {
+                                    // 첫 응답인 경우 메시지 div 생성
+                                    if (!assistantMessageDiv) {
+                                        showTypingIndicator(false);
+                                        assistantMessageDiv = createAssistantMessage();
+                                    }
+                                    
+                                    assistantResponse += data.response;
+                                    updateAssistantMessage(assistantMessageDiv, assistantResponse);
+                                }
+                                
+                                if (data.done) {
+                                    if (assistantMessageDiv) {
+                                        finalizeAssistantMessage(assistantMessageDiv, data);
+                                    }
+                                }
+                                
+                                // 세션 ID 업데이트
+                                if (data.session_id && data.session_id !== currentSessionId) {
+                                    currentSessionId = data.session_id;
+                                    document.getElementById('sessionInfo').textContent = `세션: ${currentSessionId}`;
+                                }
+                                
+                            } catch (e) {
+                                // JSON 파싱 오류 무시
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showTypingIndicator(false);
+                addMessage('assistant', `❌ 오류가 발생했습니다: ${error.message}`, null, selectedModel);
+            } finally {
+                isGenerating = false;
+                updateSendButton(false);
+                
+                // 세션 목록 새로고침
+                await loadSessions();
+            }
+        }
+
+        // AI 메시지 div 생성
+        function createAssistantMessage() {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant-message';
+            
+            const time = new Date().toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="message-role assistant">🤖 AI ${selectedModel || ''}</span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-content"></div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            return messageDiv;
+        }
+
+        // AI 메시지 업데이트
+        function updateAssistantMessage(messageDiv, content) {
+            const contentDiv = messageDiv.querySelector('.message-content');
+            contentDiv.textContent = content;
+            
+            // 스크롤을 최하단으로
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // AI 메시지 완료 처리
+        function finalizeAssistantMessage(messageDiv, data) {
+            const contentDiv = messageDiv.querySelector('.message-content');
+            let content = contentDiv.textContent;
+            
+            // 통계 정보 추가
+            if (data.eval_count || data.total_duration) {
+                content += `\n\n📊 생성 완료`;
+                if (data.eval_count) content += ` | 토큰: ${data.eval_count}`;
+                if (data.total_duration) content += ` | 시간: ${(data.total_duration / 1000000000).toFixed(2)}초`;
+            }
+            
+            contentDiv.textContent = content;
+        }
+
+        // 타이핑 인디케이터 표시/숨김
+        function showTypingIndicator(show) {
+            const indicator = document.getElementById('typingIndicator');
+            if (show) {
+                indicator.classList.add('active');
+            } else {
+                indicator.classList.remove('active');
+            }
+        }
+
+        // 전송 버튼 상태 업데이트
+        function updateSendButton(isLoading) {
+            const sendBtn = document.getElementById('sendBtn');
+            if (isLoading) {
+                sendBtn.disabled = true;
+                sendBtn.textContent = '⏳ 생성중...';
+            } else {
+                sendBtn.disabled = false;
+                sendBtn.textContent = '📤 전송';
+            }
+        }
+
+        // 접을 수 있는 섹션 토글
+        function toggleCollapsible(header) {
+            const content = header.nextElementSibling;
+            const isExpanded = content.classList.contains('expanded');
+            
+            if (isExpanded) {
+                // 접기
+                content.style.height = content.scrollHeight + 'px';
+                setTimeout(() => {
+                    content.style.height = '0px';
+                }, 10);
+                setTimeout(() => {
+                    content.classList.remove('expanded');
+                    content.style.height = '';
+                }, 300);
+            } else {
+                // 펼치기
+                content.classList.add('expanded');
+                const targetHeight = content.scrollHeight;
+                content.style.height = '0px';
+                setTimeout(() => {
+                    content.style.height = targetHeight + 'px';
+                }, 10);
+                setTimeout(() => {
+                    content.style.height = 'auto';
+                }, 300);
+            }
+        }
+
+        // 페이지 로드 시 고급 설정 기본으로 접기
+        document.addEventListener('DOMContentLoaded', () => {
+            // 고급 설정 섹션을 기본으로 접어둠
+            setTimeout(() => {
+                const headers = document.querySelectorAll('.collapsible-header');
+                headers.forEach(header => {
+                    if (header.textContent.includes('고급 설정')) {
+                        const content = header.nextElementSibling;
+                        content.classList.remove('expanded'); // 기본으로 접기
+                    }
+                });
+            }, 100);
+        });
+    </script>
+</body>
+</html>
