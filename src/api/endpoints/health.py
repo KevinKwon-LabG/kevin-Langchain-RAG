@@ -4,7 +4,6 @@ Health API 엔드포인트
 """
 
 import logging
-import time
 from fastapi import APIRouter
 from datetime import datetime
 

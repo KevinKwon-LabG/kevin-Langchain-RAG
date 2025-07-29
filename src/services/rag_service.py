@@ -1,7 +1,6 @@
 import json
 import logging
-from typing import List, Dict, Any, Optional
-import requests
+from typing import Dict, Any, Optional
 
 from langchain.prompts import PromptTemplate
 from langchain.schema import Document

@@ -6,10 +6,10 @@ Ollama 모델과의 대화, 세션 관리 등을 제공합니다.
 import logging
 import json
 import requests
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional
-from src.models.schemas import ChatRequest, SessionInfo
+from src.models.schemas import ChatRequest
 from src.utils.session_manager import (
     get_or_create_session,
     add_message_to_session,
@@ -18,6 +18,7 @@ from src.utils.session_manager import (
     get_all_sessions,
     build_conversation_prompt
 )
+from src.services.weather_service import weather_service
 
 from datetime import datetime
 
@@ -37,307 +38,11 @@ AVAILABLE_MODELS = [
     {"name": "deepseek-v2:16b-lite-chat-q8_0", "size": "16 GB", "id": "1d62ef756269"},        
 ]
 
-# 웹 검색 모드 저장소 (실제 운영에서는 Redis나 데이터베이스 사용 권장)
-web_search_mode = "model_only"  # 기본값
-
-def get_web_search_mode():
-    """현재 웹 검색 모드를 반환합니다."""
-    return web_search_mode
-
-def set_web_search_mode(mode: str):
-    """웹 검색 모드를 설정합니다."""
-    global web_search_mode
-    web_search_mode = mode
-
-
-
-async def perform_mcp_search_with_decision(query: str, service_decision: Dict[str, Any], model_name: Optional[str] = None) -> str:
-    """
-    이미 결정된 서비스 타입을 사용하여 MCP 서버 검색을 수행합니다.
-    
-    Args:
-        query: 검색 쿼리
-        service_decision: 이미 결정된 서비스 결정 결과
-        model_name: 사용할 AI 모델 이름 (None이면 기본 모델 사용)
-    
-    Returns:
-        검색 결과 문자열
-    """
-    try:
-        # 이미 결정된 서비스 타입에 따라 적절한 MCP 서비스 호출
-        decision = service_decision.get("decision", "MODEL_ONLY")
-        
-        if decision == "MCP_SERVER-STOCK":
-            return await perform_stock_search(query, model_name)
-        elif decision == "MCP_SERVER-WEATHER":
-            return await perform_weather_search(query)
-        elif decision == "MCP_SERVER-WEB":
-            return await perform_web_search(query)
-        else:
-            # 기본적으로 웹 검색 수행
-            return await perform_web_search(query)
-                
-    except Exception as e:
-        logger.error(f"MCP 서버 검색 오류: {e}")
-        return f"MCP 서버 검색 중 오류가 발생했습니다: {str(e)}"
-
-
-async def perform_mcp_search(query: str, model_name: Optional[str] = None) -> str:
-    """
-    MCP 서버를 사용하여 지능적인 검색을 수행합니다.
-    Langchain decision 서비스를 사용하여 적절한 서비스를 선택합니다.
-    
-    Args:
-        query: 검색 쿼리
-        model_name: 사용할 AI 모델 이름 (None이면 기본 모델 사용)
-    
-    Returns:
-        검색 결과 문자열
-    """
-    try:
-        # 1단계: Langchain decision 서비스로 서비스 분류 (사용자가 선택한 모델 사용)
-        from src.services.langchain_decision_service import langchain_decision_service
-        service_decision = langchain_decision_service.decide_search_method(query, "mcp_server", model_name)
-        
-        # 2단계: 분류된 서비스에 따라 적절한 MCP 서비스 호출
-        return await perform_mcp_search_with_decision(query, service_decision, model_name)
-                
-    except Exception as e:
-        logger.error(f"MCP 서버 검색 오류: {e}")
-        return f"MCP 서버 검색 중 오류가 발생했습니다: {str(e)}"
-
-
-
-async def perform_stock_search(query: str, model_name: Optional[str] = None) -> str:
-    """
-    주식 관련 검색을 수행합니다.
-    
-    Args:
-        query: 검색 쿼리
-        model_name: 사용할 AI 모델 이름 (None이면 기본 모델 사용)
-    
-    Returns:
-        주식 검색 결과
-    """
-    try:
-        from src.services.stock_keyword_extractor import stock_keyword_extractor
-        
-        # 통합 메서드로 키워드 추출 → 검색 → 상세 정보 조회 (사용자가 선택한 모델 사용)
-        result = await stock_keyword_extractor.extract_and_get_stock_info(query, model_name)
-        
-        if not result.get('success', False):
-            return f"❌ 주식 정보 조회 실패: {result.get('error', '알 수 없는 오류')}"
-        
-        # 결과 구성
-        results = []
-        results.append(f"📈 주식 정보 검색 결과:")
-        
-        # 추출 정보
-        extraction_result = result.get('extraction_result', {})
-        extracted_keyword = extraction_result.get('keyword', '')
-        results.append(f"🔍 추출된 키워드: '{extracted_keyword}' (신뢰도: {extraction_result.get('confidence', 0):.1%})")
-        
-        # 처리 방식에 따른 결과 표시
-        processing_type = result.get('processing_type', '')
-        
-        if processing_type == 'direct_stock_code':
-            # 주식 코드로 직접 조회한 경우
-            stock_info = result.get('stock_info', {})
-            if stock_info and stock_info.get('success', True):
-                basic_info = stock_info.get('Basic Information', {})
-                financial_data = stock_info.get('Financial Data', {})
-                
-                results.append(f"\n🔸 종목코드: {extracted_keyword}")
-                results.append(f"   회사명: {basic_info.get('Company Name', 'N/A')}")
-                results.append(f"   시장: {basic_info.get('Listed Market', 'N/A')}")
-                results.append(f"   업종: {basic_info.get('Industry Classification', 'N/A')}")
-                results.append(f"   현재가: {financial_data.get('Latest Stock Price', 'N/A'):,}원" if isinstance(financial_data.get('Latest Stock Price'), (int, float)) else f"   현재가: {financial_data.get('Latest Stock Price', 'N/A')}")
-                results.append(f"   PER: {financial_data.get('Price-Earnings Ratio', 'N/A')}")
-                results.append(f"   PBR: {financial_data.get('Price-Book Ratio', 'N/A')}")
-                results.append(f"   배당수익률: {financial_data.get('Dividend Yield', 'N/A')}%")
-            else:
-                error_msg = stock_info.get('error', '조회 실패') if isinstance(stock_info, dict) else '조회 실패'
-                results.append(f"\n❌ 종목코드 {extracted_keyword}: {error_msg}")
-                
-        elif processing_type == 'keyword_search_then_detail':
-            # 키워드 검색 후 상세 정보 조회한 경우
-            search_results = result.get('search_results', {})
-            stock_info = result.get('stock_info', {})
-            selected_stock_code = result.get('selected_stock_code', '')
-            selected_stock_name = result.get('selected_stock_name', '')
-            
-            # 검색 결과 요약
-            results.append(f"\n🔍 '{extracted_keyword}' 검색 결과 ({search_results.get('result_count', 0)}개):")
-            results.append(f"📋 선택된 종목: {selected_stock_name} ({selected_stock_code})")
-            
-            # 상세 정보
-            if stock_info and stock_info.get('success', True):
-                basic_info = stock_info.get('Basic Information', {})
-                financial_data = stock_info.get('Financial Data', {})
-                
-                results.append(f"\n🔸 상세 정보:")
-                results.append(f"   회사명: {basic_info.get('Company Name', 'N/A')}")
-                results.append(f"   시장: {basic_info.get('Listed Market', 'N/A')}")
-                results.append(f"   업종: {basic_info.get('Industry Classification', 'N/A')}")
-                results.append(f"   현재가: {financial_data.get('Latest Stock Price', 'N/A'):,}원" if isinstance(financial_data.get('Latest Stock Price'), (int, float)) else f"   현재가: {financial_data.get('Latest Stock Price', 'N/A')}")
-                results.append(f"   PER: {financial_data.get('Price-Earnings Ratio', 'N/A')}")
-                results.append(f"   PBR: {financial_data.get('Price-Book Ratio', 'N/A')}")
-                results.append(f"   배당수익률: {financial_data.get('Dividend Yield', 'N/A')}%")
-            else:
-                error_msg = stock_info.get('error', '상세 정보 조회 실패') if isinstance(stock_info, dict) else '상세 정보 조회 실패'
-                results.append(f"\n❌ 상세 정보 조회 실패: {error_msg}")
-            
-            # 나머지 검색 결과도 표시
-            if search_results.get("results"):
-                for i, stock in enumerate(search_results["results"][1:5], 2):
-                    results.append(f"\n{i}. {stock.get('company_name', 'N/A')} ({stock.get('stock_code', 'N/A')})")
-                    results.append(f"   시장: {stock.get('market', 'N/A')}")
-        
-        # 추출 정보 추가
-        results.append(f"\n📋 추출 정보:")
-        results.append(f"   원본 질문: {extraction_result.get('original_prompt', 'N/A')}")
-        results.append(f"   추출 방식: {extraction_result.get('extraction_type', 'N/A')}")
-        results.append(f"   처리 방식: {processing_type}")
-        if extraction_result.get('reason'):
-            results.append(f"   추출 이유: {extraction_result.get('reason', 'N/A')}")
-        
-        return "\n".join(results)
-        
-    except Exception as e:
-        logger.error(f"주식 검색 오류: {e}")
-        return f"주식 검색 중 오류가 발생했습니다: {str(e)}"
-
-async def perform_weather_search(query: str) -> str:
-    """
-    날씨 관련 검색을 수행합니다.
-    
-    Args:
-        query: 검색 쿼리
-    
-    Returns:
-        날씨 검색 결과
-    """
-    try:
-        from src.services.integrated_mcp_client import safe_mcp_call, OptimizedIntegratedMCPClient
-        
-        # 도시명 추출
-        cities = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "제주", "수원", "고양"]
-        found_city = None
-        
-        for city in cities:
-            if city in query:
-                found_city = city
-                break
-        
-        if not found_city:
-            # 기본값으로 서울 사용
-            found_city = "서울"
-        
-        async with OptimizedIntegratedMCPClient() as client:
-            results = []
-            results.append(f"🌤️ {found_city} 날씨 정보:")
-            
-            try:
-                weather_info = await safe_mcp_call(client, client.get_weather, found_city)
-                if weather_info:
-                    results.append(f"\n🌡️ 현재온도: {weather_info.get('temperature', 'N/A')}°C")
-                    results.append(f"💧 습도: {weather_info.get('humidity', 'N/A')}%")
-                    results.append(f"🌪️ 풍속: {weather_info.get('wind_speed', 'N/A')}m/s")
-                    results.append(f"☁️ 날씨상태: {weather_info.get('description', 'N/A')}")
-                    
-                    # 미세먼지 정보도 추가
-                    try:
-                        air_quality = await safe_mcp_call(client, client.get_air_quality, found_city)
-                        if air_quality:
-                            results.append(f"😷 미세먼지: {air_quality.get('pm10', 'N/A')}㎍/㎥")
-                            results.append(f"😷 초미세먼지: {air_quality.get('pm25', 'N/A')}㎍/㎥")
-                    except:
-                        pass  # 미세먼지 정보가 없어도 계속 진행
-                else:
-                    results.append(f"\n❌ {found_city} 날씨 정보를 찾을 수 없습니다.")
-            except Exception as e:
-                results.append(f"\n❌ 날씨 정보 조회 실패: {str(e)}")
-            
-            return "\n".join(results)
-            
-    except Exception as e:
-        logger.error(f"날씨 검색 오류: {e}")
-        return f"날씨 검색 중 오류가 발생했습니다: {str(e)}"
-
-async def perform_web_search(query: str) -> str:
-    """
-    웹 검색을 수행합니다.
-    
-    Args:
-        query: 검색 쿼리
-    
-    Returns:
-        웹 검색 결과
-    """
-    try:
-        from src.services.integrated_mcp_client import safe_mcp_call, OptimizedIntegratedMCPClient
-        
-        async with OptimizedIntegratedMCPClient() as client:
-            # 웹 검색 수행
-            search_results = await safe_mcp_call(
-                client, 
-                client.web_search, 
-                query, 
-                max_results=5
-            )
-            
-            if search_results and "results" in search_results:
-                results = []
-                results.append(f"🔍 '{query}' 웹 검색 결과:")
-                
-                for i, result in enumerate(search_results["results"][:5], 1):
-                    title = result.get("title", "제목 없음")
-                    snippet = result.get("snippet", "내용 없음")
-                    url = result.get("url", "")
-                    
-                    results.append(f"\n{i}. {title}")
-                    results.append(f"   {snippet}")
-                    if url:
-                        results.append(f"   🔗 {url}")
-                
-                return "\n".join(results)
-            else:
-                return f"'{query}'에 대한 웹 검색 결과를 찾을 수 없습니다."
-                
-    except Exception as e:
-        logger.error(f"웹 검색 오류: {e}")
-        return f"웹 검색 중 오류가 발생했습니다: {str(e)}"
-
-def extract_search_keywords(query: str) -> str:
-    """
-    사용자 쿼리에서 검색 키워드를 추출합니다.
-    
-    Args:
-        query: 사용자 쿼리
-    
-    Returns:
-        검색 키워드
-    """
-    # 일반적인 검색 요청 패턴 제거
-    search_patterns = [
-        "최신", "뉴스", "찾아줘", "검색해줘", "알려줘", "보여줘",
-        "관련", "정보", "소식", "업데이트", "최근"
-    ]
-    
-    keywords = query
-    for pattern in search_patterns:
-        keywords = keywords.replace(pattern, "").strip()
-    
-    # 연속된 공백 제거
-    import re
-    keywords = re.sub(r'\s+', ' ', keywords)
-    
-    return keywords.strip()
-
 @router.post("/")
 async def chat(request: ChatRequest):
     """
     Ollama 모델과 대화를 수행합니다.
+    날씨 관련 질문인 경우 MCP 서버에 요청하여 답변합니다.
     
     Args:
         request: 채팅 요청 (모델, 메시지, 세션 ID 등 포함)
@@ -352,42 +57,41 @@ async def chat(request: ChatRequest):
         # 사용자 메시지를 세션에 추가
         add_message_to_session(session.session_id, "user", request.message, request.model)
         
-        # 웹 검색 모드에 따른 처리
-        current_mode = get_web_search_mode()
-        enhanced_message = request.message
+        # 날씨 관련 질문인지 확인
+        weather_info = weather_service.get_weather_info(request.message)
         
-        # "모델에서만 답변" 모드일 때만 langchain decision 스킵
-        if current_mode == "model_only":
-            logger.info("모델에서만 답변 모드: langchain decision 스킵")
-        else:
-            # Langchain decision 서비스로 분석 수행 (사용자가 선택한 모델 사용)
-            from src.services.langchain_decision_service import langchain_decision_service
-            service_decision = langchain_decision_service.decide_search_method(
-                request.message, 
-                current_mode, 
-                model_name=request.model
-            )
-            logger.info(f"서비스 결정: {service_decision}")
+        if weather_info["is_weather_question"]:
+            # 날씨 관련 질문인 경우 MCP 서버에 요청
+            logger.info(f"날씨 관련 질문 감지: {request.message}")
             
-            if current_mode == "mcp_server" and service_decision["decision"].startswith("MCP_SERVER-"):
-                # MCP 서버 검색 수행 (이미 결정된 서비스 타입 사용)
-                try:
-                    mcp_results = await perform_mcp_search_with_decision(request.message, service_decision, request.model)
-                    if mcp_results:
-                        enhanced_message = f"{request.message}\n\n[MCP 서버 검색 결과]\n{mcp_results}"
-                        logger.info(f"MCP 서버 검색 수행됨: {service_decision['reason']} ({service_decision['decision']})")
-                    else:
-                        logger.info("MCP 서버 검색 결과 없음")
-                except Exception as e:
-                    logger.error(f"MCP 서버 검색 실패: {e}")
-                    enhanced_message = f"{request.message}\n\n[MCP 서버 검색 실패: {str(e)}]"
-            elif current_mode == "mcp_server" and not service_decision["decision"].startswith("MCP_SERVER-"):
-                logger.info(f"MCP 서버 검색 스킵됨: {service_decision['reason']} ({service_decision['decision']})")
+            weather_response = await weather_service.get_weather_response(request.message)
+            
+            if weather_response["success"]:
+                # 성공적인 날씨 응답
+                response_text = weather_response["response"]
+                
+                # 어시스턴트 메시지를 세션에 추가
+                add_message_to_session(
+                    session.session_id, 
+                    "assistant", 
+                    response_text, 
+                    request.model
+                )
+                
+                # 스트리밍 응답 생성
+                def generate_weather_response():
+                    yield f"data: {json.dumps({'response': response_text})}\n\n"
+                    yield f"data: {json.dumps({'done': True, 'weather_info': weather_info})}\n\n"
+                
+                return StreamingResponse(generate_weather_response(), media_type="text/plain")
+            else:
+                # 날씨 정보 요청 실패 시 일반 모델 사용
+                logger.warning(f"날씨 정보 요청 실패, 일반 모델 사용: {weather_response['error']}")
         
-        # 대화 프롬프트 구성
+        # 일반 대화 또는 날씨 요청 실패 시 Ollama 모델 사용
         conversation_prompt = build_conversation_prompt(
             session.session_id, 
-            enhanced_message, 
+            request.message, 
             request.system
         )
         
@@ -460,17 +164,6 @@ async def analyze_chat_request(request: ChatRequest):
         HTTPException: 분석 중 오류가 발생한 경우
     """
     try:
-        # 현재 웹 검색 모드 가져오기
-        current_mode = get_web_search_mode()
-        
-        # Langchain decision 서비스로 분석 (사용자가 선택한 모델 사용)
-        from src.services.langchain_decision_service import langchain_decision_service
-        service_decision = langchain_decision_service.decide_search_method(
-            request.message, 
-            current_mode, 
-            model_name=request.model
-        )
-        
         # 분석 결과 구성
         result = {
             "chat_request": {
@@ -479,15 +172,10 @@ async def analyze_chat_request(request: ChatRequest):
                 "session_id": request.session_id
             },
             "analysis": {
-                "current_mode": current_mode,
-                "decision": service_decision["decision"],
-                "reason": service_decision["reason"],
-                "confidence": service_decision["confidence"],
-                "use_mcp_server": service_decision["decision"].startswith("MCP_SERVER-"),
-                "use_web_search": service_decision["decision"] == "MCP_SERVER-WEB",
-                "use_stock_service": service_decision["decision"] == "MCP_SERVER-STOCK",
-                "use_weather_service": service_decision["decision"] == "MCP_SERVER-WEATHER",
-                "service_type": langchain_decision_service.get_service_type(service_decision)
+                "decision": "MODEL_ONLY",
+                "reason": "AI 모델 사용",
+                "confidence": 1.0,
+                "service_type": "model_only"
             },
             "timestamp": datetime.now().isoformat()
         }
@@ -633,7 +321,7 @@ async def health_check():
         
         health_info = {
             "status": "healthy",
-            "timestamp": "2024-01-01T12:00:00Z",
+            "timestamp": datetime.now().isoformat(),
             "ollama_server": ollama_status,
             "ollama_url": OLLAMA_BASE_URL,
             "session_stats": session_stats,
@@ -644,6 +332,50 @@ async def health_check():
         logger.error(f"헬스 체크 중 오류: {e}")
         return {
             "status": "unhealthy",
-            "timestamp": "2024-01-01T12:00:00Z",
+            "timestamp": datetime.now().isoformat(),
             "error": str(e)
-        } 
+        }
+
+@router.post("/weather/analyze")
+async def analyze_weather_question(request: ChatRequest):
+    """
+    메시지가 날씨 관련 질문인지 분석합니다.
+    
+    Args:
+        request: 채팅 요청
+        
+    Returns:
+        날씨 분석 결과
+    """
+    try:
+        weather_info = weather_service.get_weather_info(request.message)
+        return {
+            "message": request.message,
+            "weather_analysis": weather_info,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"날씨 질문 분석 중 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"날씨 질문 분석 중 오류가 발생했습니다: {str(e)}")
+
+@router.post("/weather/query")
+async def query_weather(request: ChatRequest):
+    """
+    날씨 정보를 MCP 서버에 직접 요청합니다.
+    
+    Args:
+        request: 채팅 요청
+        
+    Returns:
+        날씨 정보 응답
+    """
+    try:
+        weather_response = await weather_service.get_weather_response(request.message)
+        return {
+            "message": request.message,
+            "weather_response": weather_response,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"날씨 정보 요청 중 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"날씨 정보 요청 중 오류가 발생했습니다: {str(e)}") 

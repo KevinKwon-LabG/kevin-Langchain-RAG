@@ -45,65 +45,9 @@
             flex-shrink: 0;
         }
 
-        .web-search-mode-selector {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 15px;
-            margin-top: 15px;
-            backdrop-filter: blur(10px);
-        }
 
-        .web-search-mode-selector h4 {
-            margin: 0 0 10px 0;
-            font-size: 1rem;
-            opacity: 0.9;
-        }
 
-        .mode-options {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
 
-        .mode-option {
-            background: rgba(255, 255, 255, 0.2);
-            border: 2px solid transparent;
-            border-radius: 8px;
-            padding: 10px 15px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.85rem;
-            font-weight: 500;
-            min-width: 120px;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
-
-        .mode-option:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-1px);
-        }
-
-        .mode-option.selected {
-            background: rgba(255, 255, 255, 0.9);
-            color: #2c3e50;
-            border-color: #3498db;
-            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
-        }
-
-        .mode-option .mode-label {
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .mode-option .mode-description {
-            font-size: 0.7rem;
-            opacity: 0.8;
-            line-height: 1.2;
-        }
 
         .header h1 {
             font-size: 2rem;
@@ -726,12 +670,7 @@
             <h1>💬 LAB.G AI 대화형 인터페이스</h1>
             
             
-            <div class="web-search-mode-selector">
-                <h4>🔍 웹 검색 모드 선택</h4>
-                <div class="mode-options" id="webSearchModeOptions">
-                    <!-- 웹 검색 모드 옵션들이 여기에 동적으로 생성됩니다 -->
-                </div>
-            </div>
+
         </div>
 
         <div class="main-layout">
@@ -954,7 +893,6 @@
             createModelGrid();
             await loadModels();
             await loadSessions();
-            await loadWebSearchModes();
             startNewChat();
             
             // 개발자 모드가 비활성화된 상태이므로 서버 상태 모니터링 시작하지 않음
@@ -1657,116 +1595,7 @@
             }
         }
 
-        // 웹 검색 모드 로드
-        async function loadWebSearchModes() {
-            try {
-                console.log('웹 검색 모드 로드 시작...');
-                const response = await fetch('/api/web-search-modes');
-                
-                if (!response.ok) {
-                    console.error('웹 검색 모드 API 응답 오류:', response.status, response.statusText);
-                    return;
-                }
-                
-                const data = await response.json();
-                console.log('웹 검색 모드 데이터:', data);
-                
-                if (data.error) {
-                    console.error('웹 검색 모드 로드 실패:', data.error);
-                    return;
-                }
-                
-                const modeOptions = document.getElementById('webSearchModeOptions');
-                if (!modeOptions) {
-                    console.error('웹 검색 모드 옵션 컨테이너를 찾을 수 없습니다.');
-                    return;
-                }
-                
-                modeOptions.innerHTML = '';
-                
-                if (!data.modes || data.modes.length === 0) {
-                    console.warn('웹 검색 모드가 없습니다.');
-                    modeOptions.innerHTML = '<div style="color: rgba(255,255,255,0.7);">웹 검색 모드를 사용할 수 없습니다.</div>';
-                    return;
-                }
-                
-                data.modes.forEach(mode => {
-                    const option = document.createElement('div');
-                    option.className = 'mode-option';
-                    option.onclick = () => selectWebSearchMode(mode.value, option);
-                    
-                    option.innerHTML = `
-                        <div class="mode-label">${mode.label}</div>
-                        <div class="mode-description">${mode.description}</div>
-                    `;
-                    
-                    if (mode.value === data.current_mode) {
-                        option.classList.add('selected');
-                    }
-                    
-                    modeOptions.appendChild(option);
-                });
-                
-                console.log('웹 검색 모드 로드 완료');
-            } catch (error) {
-                console.error('웹 검색 모드 로드 실패:', error);
-                const modeOptions = document.getElementById('webSearchModeOptions');
-                if (modeOptions) {
-                    modeOptions.innerHTML = '<div style="color: rgba(255,255,255,0.7);">웹 검색 모드 로드 실패</div>';
-                }
-            }
-        }
 
-        // 웹 검색 모드 선택
-        async function selectWebSearchMode(mode, optionElement) {
-            try {
-                console.log('웹 검색 모드 선택:', mode);
-                
-
-                
-                // 이전 선택 해제
-                document.querySelectorAll('.mode-option').forEach(opt => {
-                    opt.classList.remove('selected');
-                });
-                
-                // 새로 선택
-                optionElement.classList.add('selected');
-                
-                // 서버에 모드 변경 요청
-                const response = await fetch('/api/web-search-mode', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ mode: mode })
-                });
-                
-                if (!response.ok) {
-                    console.error('웹 검색 모드 API 응답 오류:', response.status, response.statusText);
-                    optionElement.classList.remove('selected');
-                    return;
-                }
-                
-                const data = await response.json();
-                console.log('웹 검색 모드 변경 응답:', data);
-                
-                if (data.success) {
-                    console.log('웹 검색 모드 변경됨:', data.message);
-                    // 성공 메시지 표시 (선택적)
-                    showNotification(`웹 검색 모드가 '${mode}'로 변경되었습니다.`, 'success');
-                } else {
-                    console.error('웹 검색 모드 변경 실패:', data.error);
-                    // 선택 취소
-                    optionElement.classList.remove('selected');
-                    showNotification(`웹 검색 모드 변경 실패: ${data.error}`, 'error');
-                }
-            } catch (error) {
-                console.error('웹 검색 모드 선택 실패:', error);
-                // 선택 취소
-                optionElement.classList.remove('selected');
-                showNotification('웹 검색 모드 선택 중 오류가 발생했습니다.', 'error');
-            }
-        }
 
         // 알림 표시 함수
         function showNotification(message, type = 'info') {

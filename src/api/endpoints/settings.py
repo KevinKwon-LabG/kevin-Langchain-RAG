@@ -4,7 +4,7 @@ Settings API 엔드포인트
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from datetime import datetime
 from typing import Dict, Any
 
