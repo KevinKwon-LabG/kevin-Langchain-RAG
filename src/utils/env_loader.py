@@ -138,7 +138,7 @@ def get_advanced_settings() -> Dict[str, Any]:
             "min": settings.get("MAX_TOKENS_MIN", 100),
             "max": settings.get("MAX_TOKENS_MAX", 8192),
             "step": settings.get("MAX_TOKENS_STEP", 100),
-            "presets": settings.get("MAX_TOKENS_PRESETS", [512, 1024, 2048, 4096, 6144, 8192]),
+            "presets": settings.get("MAX_TOKENS_PRESETS", [1024, 2048, 4096, 6144, 8192]),
             "default": settings.get("MAX_TOKENS", 4000)
         },
         "repeat_penalty": {

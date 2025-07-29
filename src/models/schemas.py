@@ -1,80 +1,92 @@
+"""
+Pydantic 모델과 스키마 정의
+FastAPI에서 사용하는 요청/응답 모델들을 정의합니다.
+"""
+
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class ChatRequest(BaseModel):
-    model: str = Field(..., description="사용할 모델 이름")
+    """채팅 요청 모델"""
+    model: str = Field(..., description="사용할 모델명")
     message: str = Field(..., description="사용자 메시지")
     session_id: Optional[str] = Field(None, description="세션 ID")
     system: Optional[str] = Field("You are a helpful assistant.", description="시스템 프롬프트")
-    options: Optional[Dict[str, Any]] = Field(default_factory=dict, description="모델 옵션")
-    use_rag: Optional[bool] = Field(True, description="RAG 사용 여부")
-    top_k: Optional[int] = Field(5, description="검색할 문서 수")
-
-class DocumentUploadRequest(BaseModel):
-    filename: str = Field(..., description="파일명")
-    content: str = Field(..., description="문서 내용")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="문서 메타데이터")
-
-class DocumentResponse(BaseModel):
-    id: str
-    filename: str
-    content: str
-    metadata: Dict[str, Any]
-    created_at: datetime
-    chunk_count: int
-
-class SearchRequest(BaseModel):
-    query: str = Field(..., description="검색 쿼리")
-    top_k: int = Field(5, description="검색할 문서 수")
-    filter_metadata: Optional[Dict[str, Any]] = Field(None, description="메타데이터 필터")
-
-class SearchResult(BaseModel):
-    id: str
-    content: str
-    metadata: Dict[str, Any]
-    score: float
-
-class SearchResponse(BaseModel):
-    results: List[SearchResult]
-    total_count: int
-    query: str
+    options: Optional[Dict[str, Any]] = Field({}, description="추가 옵션")
 
 class SessionInfo(BaseModel):
-    session_id: str
-    created_at: datetime
-    last_active: datetime
-    message_count: int
-    preview: str
+    """세션 정보 모델"""
+    session_id: str = Field(..., description="세션 ID")
+    created_at: str = Field(..., description="생성 시간")
+    last_active: str = Field(..., description="마지막 활동 시간")
+    message_count: int = Field(..., description="메시지 수")
+    preview: str = Field(..., description="미리보기")
 
 class Message(BaseModel):
-    role: str
-    content: str
-    timestamp: datetime
-    model: Optional[str] = None
-    sources: Optional[List[Dict[str, Any]]] = None
+    """메시지 모델"""
+    role: str = Field(..., description="메시지 역할 (user/assistant)")
+    content: str = Field(..., description="메시지 내용")
+    timestamp: str = Field(..., description="타임스탬프")
+    model: Optional[str] = Field(None, description="사용된 모델")
 
 class SessionData(BaseModel):
-    session_id: str
-    messages: List[Message]
-    created_at: datetime
-    last_active: datetime
+    """세션 데이터 모델"""
+    session_id: str = Field(..., description="세션 ID")
+    messages: List[Message] = Field(..., description="메시지 목록")
+    created_at: str = Field(..., description="생성 시간")
+    last_active: str = Field(..., description="마지막 활동 시간")
+
+class StockQuery(BaseModel):
+    """주식 조회 요청 모델"""
+    stock_code: Optional[str] = Field(None, description="주식 코드")
+    stock_name: Optional[str] = Field(None, description="주식명")
+    start_date: Optional[str] = Field(None, description="시작 날짜")
+    end_date: Optional[str] = Field(None, description="종료 날짜")
+    query_type: Optional[str] = Field("general", description="조회 유형")
+
+class FileWriteRequest(BaseModel):
+    """파일 쓰기 요청 모델"""
+    content: str = Field(..., description="파일 내용")
+
+class UserRequest(BaseModel):
+    """사용자 요청 모델"""
+    name: str = Field(..., description="사용자 이름")
+    email: str = Field(..., description="이메일")
+
+class NoteRequest(BaseModel):
+    """노트 요청 모델"""
+    title: str = Field(..., description="노트 제목")
+    content: str = Field(..., description="노트 내용")
+    user_id: Optional[int] = Field(None, description="사용자 ID")
+
+class WebSearchRequest(BaseModel):
+    """웹 검색 요청 모델"""
+    query: str = Field(..., description="검색어")
+    max_results: int = Field(5, description="최대 결과 수")
+
+class WeatherRequest(BaseModel):
+    """날씨 요청 모델"""
+    city: str = Field(..., description="도시명")
+
+class FileSearchRequest(BaseModel):
+    """파일 검색 요청 모델"""
+    pattern: str = Field(..., description="검색 패턴")
+    directory: str = Field(".", description="검색 디렉토리")
+
+class DatabaseQueryRequest(BaseModel):
+    """데이터베이스 쿼리 요청 모델"""
+    query: str = Field(..., description="SQL 쿼리")
 
 class HealthResponse(BaseModel):
-    server: str
-    ollama_connected: bool
-    ollama_url: str
-    active_sessions: int
-    vectorstore_status: str
-    timestamp: float
-    error: Optional[str] = None
+    """헬스 체크 응답 모델"""
+    status: str = Field(..., description="상태")
+    timestamp: str = Field(..., description="타임스탬프")
+    version: str = Field(..., description="버전")
+    services: Dict[str, str] = Field(..., description="서비스 상태")
 
-class ModelInfo(BaseModel):
-    name: str
-    size: str
-    id: str
-    modified_at: Optional[str] = None
-    size_bytes: Optional[int] = None
-
-class ModelsResponse(BaseModel):
-    models: List[ModelInfo] 
+class ErrorResponse(BaseModel):
+    """에러 응답 모델"""
+    error: str = Field(..., description="에러 메시지")
+    detail: Optional[str] = Field(None, description="상세 정보")
+    timestamp: str = Field(..., description="에러 발생 시간") 

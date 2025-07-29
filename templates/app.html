@@ -29,6 +29,12 @@
             height: calc(100vh - 40px);
             display: flex;
             flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        .container.developer-mode {
+            max-width: 50%;
+            margin-left: 0;
         }
 
         .header {
@@ -37,6 +43,66 @@
             padding: 20px 30px;
             text-align: center;
             flex-shrink: 0;
+        }
+
+        .web-search-mode-selector {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .web-search-mode-selector h4 {
+            margin: 0 0 10px 0;
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+
+        .mode-options {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .mode-option {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.85rem;
+            font-weight: 500;
+            min-width: 120px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .mode-option:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .mode-option.selected {
+            background: rgba(255, 255, 255, 0.9);
+            color: #2c3e50;
+            border-color: #3498db;
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+        }
+
+        .mode-option .mode-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .mode-option .mode-description {
+            font-size: 0.7rem;
+            opacity: 0.8;
+            line-height: 1.2;
         }
 
         .header h1 {
@@ -54,6 +120,130 @@
             display: flex;
             flex: 1;
             min-height: 0;
+            transition: all 0.3s ease;
+        }
+
+
+
+        .developer-panel {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 50%;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .developer-panel.active {
+            right: 0;
+        }
+
+        .developer-panel-header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+        }
+
+        .developer-panel-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .developer-panel-close {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .developer-panel-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .developer-panel-content {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .developer-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .developer-section h3 {
+            margin: 0 0 8px 0;
+            color: #3498db;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .developer-section pre {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 6px;
+            padding: 12px;
+            overflow-x: auto;
+            font-size: 0.8rem;
+            line-height: 1.3;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 0;
+        }
+
+        .developer-section code {
+            color: #e74c3c;
+            font-weight: 600;
+        }
+
+        .developer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .developer-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 8px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .developer-card h4 {
+            margin: 0 0 4px 0;
+            color: #f39c12;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .developer-card p {
+            margin: 0;
+            font-size: 0.7rem;
+            line-height: 1.2;
+            opacity: 0.9;
+            font-weight: 500;
         }
 
         .sidebar {
@@ -142,7 +332,7 @@
             padding: 20px;
             border-bottom: 1px solid rgba(0, 0, 0, 0.1);
             flex: 1;
-            overflow-y: auto;
+            overflow-y: visible;
         }
 
         .session-item {
@@ -399,6 +589,53 @@
             border-bottom: 1px solid rgba(0, 0, 0, 0.1);
             font-size: 0.9rem;
             color: #2c3e50;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .session-info-text {
+            flex: 1;
+        }
+
+        .developer-mode-btn {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            position: relative;
+        }
+
+        .developer-mode-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+        }
+
+        .developer-mode-btn.active {
+            background: linear-gradient(135deg, #27ae60, #229954);
+            box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+            }
+            50% {
+                box-shadow: 0 2px 8px rgba(39, 174, 96, 0.6);
+            }
+            100% {
+                box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+            }
         }
 
         .empty-chat {
@@ -486,8 +723,15 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💬 Ollama 대화형 인터페이스</h1>
-            <p>AI와 자연스러운 대화를 나눠보세요</p>
+            <h1>💬 LAB.G AI 대화형 인터페이스</h1>
+            
+            
+            <div class="web-search-mode-selector">
+                <h4>🔍 웹 검색 모드 선택</h4>
+                <div class="mode-options" id="webSearchModeOptions">
+                    <!-- 웹 검색 모드 옵션들이 여기에 동적으로 생성됩니다 -->
+                </div>
+            </div>
         </div>
 
         <div class="main-layout">
@@ -505,6 +749,14 @@
                 <div class="chat-controls">
                     <button class="btn btn-primary" onclick="startNewChat()">💬 새 대화 시작</button>
                     <button class="btn btn-secondary" onclick="clearCurrentChat()">🗑️ 현재 대화 지우기</button>
+                </div>
+
+                <!-- 세션 목록 -->
+                <div class="session-list-section">
+                    <h3>📚 대화 기록</h3>
+                    <div id="sessionList">
+                        <!-- 세션 목록이 여기에 동적으로 생성됩니다 -->
+                    </div>
                 </div>
 
                 <!-- 고급 설정 (접을 수 있음) -->
@@ -531,8 +783,8 @@
                                 <label for="num_predict">최대 토큰 수</label>
                                 <select id="num_predict">
                                     <option value="256">256</option>
-                                    <option value="512" selected>512</option>
-                                    <option value="1024">1024</option>
+                                    <option value="512">512</option>
+                                    <option value="1024" selected>1024</option>
                                     <option value="2048">2048</option>
                                 </select>
                             </div>
@@ -544,20 +796,15 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- 세션 목록 -->
-                <div class="session-list-section">
-                    <h3>📚 대화 기록</h3>
-                    <div id="sessionList">
-                        <!-- 세션 목록이 여기에 동적으로 생성됩니다 -->
-                    </div>
-                </div>
             </div>
 
             <!-- 채팅 영역 -->
             <div class="chat-area">
                 <div class="session-info" id="sessionInfo">
-                    새로운 대화를 시작하세요
+                    <div class="session-info-text">새로운 대화를 시작하세요</div>
+                    <button class="developer-mode-btn" id="developerModeBtn" onclick="toggleDeveloperMode()">
+                        🔧 Dev Mode
+                    </button>
                 </div>
 
                 <div class="chat-messages" id="chatMessages">
@@ -589,11 +836,103 @@
         </div>
     </div>
 
+    <!-- 개발자 패널 -->
+    <div class="developer-panel" id="developerPanel">
+        <div class="developer-panel-header">
+            <h2>🔧 개발자 모드</h2>
+            <button class="developer-panel-close" onclick="toggleDeveloperMode()">✕</button>
+        </div>
+        <div class="developer-panel-content">
+            <div class="developer-section">
+                <h3>📊 시스템 정보</h3>
+                <div class="developer-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="developer-card">
+                        <h4>서버</h4>
+                        <p id="devServerStatus">확인 중...</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>응답</h4>
+                        <p id="devResponseStatus">대기 중</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="developer-section" id="resourceSection">
+                <h3>💻 리소스 사용량</h3>
+                <div class="developer-grid" style="grid-template-columns: repeat(3, 1fr);">
+                    <div class="developer-card">
+                        <h4>CPU</h4>
+                        <p id="devCpuUsage">0%</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>RAM</h4>
+                        <p id="devRamUsage">0 GB / 0 GB (0%)</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>GPU 1</h4>
+                        <p id="devGpu1Usage">0%</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>GPU 2</h4>
+                        <p id="devGpu2Usage">0%</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>VRAM 1</h4>
+                        <p id="devVram1Usage">0 MB / 0 MB (0%)</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>VRAM 2</h4>
+                        <p id="devVram2Usage">0 MB / 0 MB (0%)</p>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <div class="developer-section">
+                <h3>📝 최근 요청 로그</h3>
+                <pre id="devRequestLog">요청 로그가 여기에 표시됩니다...</pre>
+            </div>
+
+            <div class="developer-section">
+                <h3>⚙️ 설정 정보</h3>
+                <pre id="devSettingsInfo">설정 정보를 불러오는 중...</pre>
+            </div>
+
+            <div class="developer-section">
+                <h3>🐛 디버그 도구</h3>
+                <div class="developer-grid">
+                    <div class="developer-card">
+                        <h4>서버 상태 확인</h4>
+                        <p><button onclick="checkServerStatus()" style="background: #3498db; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">확인</button></p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>세션 새로고침</h4>
+                        <p><button onclick="loadSessions()" style="background: #e74c3c; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">새로고침</button></p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>설정 새로고침</h4>
+                        <p><button onclick="loadSettingsInfo()" style="background: #f39c12; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">새로고침</button></p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>로그 지우기</h4>
+                        <p><button onclick="clearRequestLog()" style="background: #95a5a6; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">지우기</button></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // 전역 변수
         let currentSessionId = null;
         let selectedModel = '';
         let isGenerating = false;
+        let developerModeActive = false;
+        let requestLog = [];
+        let serverStatusInterval = null;
+        let resourceMonitorInterval = null;
+        let serverStatusOk = false;
 
         // 모델 목록
         const models = [
@@ -607,11 +946,25 @@
 
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', async () => {
+            // 개발자 모드 초기화 - 비활성화 상태로 시작
+            developerModeActive = false;
+            serverStatusOk = false;
+            clearDeveloperData();
+            
             createModelGrid();
             await loadModels();
-            checkServerStatus();
             await loadSessions();
+            await loadWebSearchModes();
             startNewChat();
+            
+            // 개발자 모드가 비활성화된 상태이므로 서버 상태 모니터링 시작하지 않음
+            console.log('애플리케이션 초기화 완료 - 개발자 모드 비활성화 상태');
+        });
+
+        // 페이지 언로드 시 정리
+        window.addEventListener('beforeunload', () => {
+            stopServerStatusMonitoring();
+            stopResourceMonitoring();
         });
 
         // 모델 그리드 생성
@@ -643,9 +996,17 @@
                 card.classList.remove('selected');
             });
             
-            // 새로 선택
+                        // 새로 선택
             cardElement.classList.add('selected');
             selectedModel = modelName;
+            
+            // 개발자 모드 로그 추가
+            addRequestLog('모델 선택', { model: modelName });
+            
+            // 개발자 패널 업데이트
+            if (developerModeActive) {
+                updateDeveloperPanel();
+            }
             
             // 환영 메시지 업데이트 (대화가 비어있는 경우에만)
             updateWelcomeMessageModel();
@@ -689,15 +1050,162 @@
 
         // 서버 상태 확인
         async function checkServerStatus() {
+            // 개발자 모드가 비활성화된 경우 확인하지 않음
+            if (!developerModeActive) {
+                return false;
+            }
+            
             try {
-                const response = await fetch('/api/health');
+                const response = await fetch('/api/health/simple');
                 const data = await response.json();
                 
-                if (!data.ollama_connected) {
-                    console.warn('Ollama 서버에 연결할 수 없습니다.');
+                const serverStatusElement = document.getElementById('devServerStatus');
+                if (data.status === 'ok') {
+                    serverStatusElement.textContent = '정상';
+                    serverStatusElement.style.color = '#27ae60';
+                    serverStatusOk = true;
+                } else {
+                    serverStatusElement.textContent = '오류';
+                    serverStatusElement.style.color = '#e74c3c';
+                    serverStatusOk = false;
                 }
+                
+                // 리소스 모니터링 상태 업데이트 (개발자 모드가 활성화된 경우에만)
+                if (developerModeActive) {
+                    updateResourceMonitoring();
+                }
+                
+                return data.status === 'ok';
             } catch (error) {
-                console.error('백엔드 서버에 연결할 수 없습니다:', error);
+                console.error('서버 상태 확인 실패:', error);
+                const serverStatusElement = document.getElementById('devServerStatus');
+                serverStatusElement.textContent = '연결 실패';
+                serverStatusElement.style.color = '#e74c3c';
+                serverStatusOk = false;
+                
+                // 리소스 모니터링 상태 업데이트 (개발자 모드가 활성화된 경우에만)
+                if (developerModeActive) {
+                    updateResourceMonitoring();
+                }
+                
+                return false;
+            }
+        }
+
+        // 서버 상태 모니터링 시작
+        function startServerStatusMonitoring() {
+            // 기존 인터벌이 있다면 제거
+            if (serverStatusInterval) {
+                clearInterval(serverStatusInterval);
+            }
+            
+            // 5초마다 서버 상태 확인
+            serverStatusInterval = setInterval(async () => {
+                await checkServerStatus();
+            }, 5000);
+        }
+
+        // 서버 상태 모니터링 중지
+        function stopServerStatusMonitoring() {
+            if (serverStatusInterval) {
+                clearInterval(serverStatusInterval);
+                serverStatusInterval = null;
+            }
+        }
+
+        // 리소스 사용량 업데이트
+        async function updateResourceUsage() {
+            // 개발자 모드가 비활성화된 경우 업데이트하지 않음
+            if (!developerModeActive) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/system/resources');
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('리소스 정보 수집 실패:', data.error);
+                    return;
+                }
+                
+                // CPU 사용량
+                document.getElementById('devCpuUsage').textContent = `${data.cpu.percent}%`;
+                
+                // RAM 사용량
+                document.getElementById('devRamUsage').textContent = 
+                    `${data.ram.used_gb} GB / ${data.ram.total_gb} GB (${data.ram.percent}%)`;
+                
+                // GPU 사용량 (최대 2개)
+                if (data.gpu && data.gpu.length > 0) {
+                    document.getElementById('devGpu1Usage').textContent = `${data.gpu[0].utilization}%`;
+                    if (data.gpu.length > 1) {
+                        document.getElementById('devGpu2Usage').textContent = `${data.gpu[1].utilization}%`;
+                    } else {
+                        document.getElementById('devGpu2Usage').textContent = 'N/A';
+                    }
+                } else {
+                    document.getElementById('devGpu1Usage').textContent = 'N/A';
+                    document.getElementById('devGpu2Usage').textContent = 'N/A';
+                }
+                
+                // VRAM 사용량 (최대 2개)
+                if (data.vram && data.vram.length > 0) {
+                    const vram1 = data.vram[0];
+                    document.getElementById('devVram1Usage').textContent = 
+                        `${vram1.used_mb} MB / ${vram1.total_mb} MB (${vram1.percent}%)`;
+                    
+                    if (data.vram.length > 1) {
+                        const vram2 = data.vram[1];
+                        document.getElementById('devVram2Usage').textContent = 
+                            `${vram2.used_mb} MB / ${vram2.total_mb} MB (${vram2.percent}%)`;
+                    } else {
+                        document.getElementById('devVram2Usage').textContent = 'N/A';
+                    }
+                } else {
+                    document.getElementById('devVram1Usage').textContent = 'N/A';
+                    document.getElementById('devVram2Usage').textContent = 'N/A';
+                }
+                
+            } catch (error) {
+                console.error('리소스 사용량 업데이트 실패:', error);
+            }
+        }
+
+        // 리소스 모니터링 상태 업데이트
+        function updateResourceMonitoring() {
+            const resourceSection = document.getElementById('resourceSection');
+            // 개발자 모드가 비활성화된 경우 모니터링하지 않음
+            if (!developerModeActive) {
+                if (resourceMonitorInterval) {
+                    clearInterval(resourceMonitorInterval);
+                    resourceMonitorInterval = null;
+                }
+                return;
+            }
+            
+            const shouldMonitor = serverStatusOk;
+            
+            if (shouldMonitor) {
+                // 리소스 모니터링 시작
+                if (!resourceMonitorInterval) {
+                    updateResourceUsage(); // 즉시 첫 번째 업데이트
+                    resourceMonitorInterval = setInterval(updateResourceUsage, 2000); // 2초마다
+                }
+            } else {
+                // 리소스 모니터링 중지
+                if (resourceMonitorInterval) {
+                    clearInterval(resourceMonitorInterval);
+                    resourceMonitorInterval = null;
+                }
+            }
+        }
+
+        // 리소스 모니터링 중지
+        function stopResourceMonitoring() {
+            if (resourceMonitorInterval) {
+                clearInterval(resourceMonitorInterval);
+                resourceMonitorInterval = null;
             }
         }
 
@@ -712,10 +1220,10 @@
                 });
                 
                 const data = await response.json();
-                currentSessionId = data.session_id;
+                currentSessionId = data.id;
                 
                 // UI 업데이트
-                document.getElementById('sessionInfo').textContent = `세션: ${currentSessionId}`;
+                updateSessionInfo(`세션: ${currentSessionId}`);
                 clearChatMessages();
                 
                 // 환영 메시지 표시
@@ -723,6 +1231,14 @@
                 
                 // 세션 목록 새로고침
                 await loadSessions();
+                
+                // 개발자 패널 업데이트
+                if (developerModeActive) {
+                    updateDeveloperPanel();
+                }
+                
+                // 개발자 모드 로그 추가
+                addRequestLog('새 대화 시작', { sessionId: currentSessionId });
                 
             } catch (error) {
                 console.error('새 대화 시작 실패:', error);
@@ -836,7 +1352,7 @@
                 
                 if (response.ok) {
                     currentSessionId = sessionId;
-                    document.getElementById('sessionInfo').textContent = `세션: ${sessionId}`;
+                    updateSessionInfo(`세션: ${sessionId}`);
                     
                     // 채팅 메시지 영역 지우기
                     const chatMessages = document.getElementById('chatMessages');
@@ -941,10 +1457,27 @@
             if (!currentSessionId) {
                 await startNewChat();
             }
+            
+
 
             // UI 업데이트
             isGenerating = true;
             updateSendButton(true);
+            
+            // 개발자 패널 업데이트
+            if (developerModeActive) {
+                updateDeveloperPanel();
+            }
+            
+            // 리소스 모니터링 상태 업데이트
+            updateResourceMonitoring();
+            
+            // 개발자 모드 로그 추가
+            addRequestLog('메시지 전송', {
+                message: message,
+                model: selectedModel,
+                sessionId: currentSessionId
+            });
             
             // 사용자 메시지 추가
             addMessage('user', message);
@@ -968,7 +1501,7 @@
             };
 
             try {
-                const response = await fetch('/api/chat', {
+                const response = await fetch('/api/chat/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1023,7 +1556,7 @@
                                 // 세션 ID 업데이트
                                 if (data.session_id && data.session_id !== currentSessionId) {
                                     currentSessionId = data.session_id;
-                                    document.getElementById('sessionInfo').textContent = `세션: ${currentSessionId}`;
+                                    updateSessionInfo(`세션: ${currentSessionId}`);
                                 }
                                 
                             } catch (e) {
@@ -1042,6 +1575,14 @@
                 
                 // 세션 목록 새로고침
                 await loadSessions();
+                
+                // 개발자 패널 업데이트
+                if (developerModeActive) {
+                    updateDeveloperPanel();
+                }
+                
+                // 리소스 모니터링 상태 업데이트
+                updateResourceMonitoring();
             }
         }
 
@@ -1067,7 +1608,10 @@
         // AI 메시지 업데이트
         function updateAssistantMessage(messageDiv, content) {
             const contentDiv = messageDiv.querySelector('.message-content');
-            contentDiv.textContent = content;
+            
+            // AI 응답에서 링크 후처리
+            const processedContent = processLinksInResponse(content);
+            contentDiv.innerHTML = processedContent;
             
             // 스크롤을 최하단으로
             const chatMessages = document.getElementById('chatMessages');
@@ -1086,7 +1630,9 @@
                 if (data.total_duration) content += ` | 시간: ${(data.total_duration / 1000000000).toFixed(2)}초`;
             }
             
-            contentDiv.textContent = content;
+            // AI 응답에서 링크 후처리
+            const processedContent = processLinksInResponse(content);
+            contentDiv.innerHTML = processedContent;
         }
 
         // 타이핑 인디케이터 표시/숨김
@@ -1108,6 +1654,274 @@
             } else {
                 sendBtn.disabled = false;
                 sendBtn.textContent = '📤 전송';
+            }
+        }
+
+        // 웹 검색 모드 로드
+        async function loadWebSearchModes() {
+            try {
+                console.log('웹 검색 모드 로드 시작...');
+                const response = await fetch('/api/web-search-modes');
+                
+                if (!response.ok) {
+                    console.error('웹 검색 모드 API 응답 오류:', response.status, response.statusText);
+                    return;
+                }
+                
+                const data = await response.json();
+                console.log('웹 검색 모드 데이터:', data);
+                
+                if (data.error) {
+                    console.error('웹 검색 모드 로드 실패:', data.error);
+                    return;
+                }
+                
+                const modeOptions = document.getElementById('webSearchModeOptions');
+                if (!modeOptions) {
+                    console.error('웹 검색 모드 옵션 컨테이너를 찾을 수 없습니다.');
+                    return;
+                }
+                
+                modeOptions.innerHTML = '';
+                
+                if (!data.modes || data.modes.length === 0) {
+                    console.warn('웹 검색 모드가 없습니다.');
+                    modeOptions.innerHTML = '<div style="color: rgba(255,255,255,0.7);">웹 검색 모드를 사용할 수 없습니다.</div>';
+                    return;
+                }
+                
+                data.modes.forEach(mode => {
+                    const option = document.createElement('div');
+                    option.className = 'mode-option';
+                    option.onclick = () => selectWebSearchMode(mode.value, option);
+                    
+                    option.innerHTML = `
+                        <div class="mode-label">${mode.label}</div>
+                        <div class="mode-description">${mode.description}</div>
+                    `;
+                    
+                    if (mode.value === data.current_mode) {
+                        option.classList.add('selected');
+                    }
+                    
+                    modeOptions.appendChild(option);
+                });
+                
+                console.log('웹 검색 모드 로드 완료');
+            } catch (error) {
+                console.error('웹 검색 모드 로드 실패:', error);
+                const modeOptions = document.getElementById('webSearchModeOptions');
+                if (modeOptions) {
+                    modeOptions.innerHTML = '<div style="color: rgba(255,255,255,0.7);">웹 검색 모드 로드 실패</div>';
+                }
+            }
+        }
+
+        // 웹 검색 모드 선택
+        async function selectWebSearchMode(mode, optionElement) {
+            try {
+                console.log('웹 검색 모드 선택:', mode);
+                
+
+                
+                // 이전 선택 해제
+                document.querySelectorAll('.mode-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                });
+                
+                // 새로 선택
+                optionElement.classList.add('selected');
+                
+                // 서버에 모드 변경 요청
+                const response = await fetch('/api/web-search-mode', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ mode: mode })
+                });
+                
+                if (!response.ok) {
+                    console.error('웹 검색 모드 API 응답 오류:', response.status, response.statusText);
+                    optionElement.classList.remove('selected');
+                    return;
+                }
+                
+                const data = await response.json();
+                console.log('웹 검색 모드 변경 응답:', data);
+                
+                if (data.success) {
+                    console.log('웹 검색 모드 변경됨:', data.message);
+                    // 성공 메시지 표시 (선택적)
+                    showNotification(`웹 검색 모드가 '${mode}'로 변경되었습니다.`, 'success');
+                } else {
+                    console.error('웹 검색 모드 변경 실패:', data.error);
+                    // 선택 취소
+                    optionElement.classList.remove('selected');
+                    showNotification(`웹 검색 모드 변경 실패: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('웹 검색 모드 선택 실패:', error);
+                // 선택 취소
+                optionElement.classList.remove('selected');
+                showNotification('웹 검색 모드 선택 중 오류가 발생했습니다.', 'error');
+            }
+        }
+
+        // 알림 표시 함수
+        function showNotification(message, type = 'info') {
+            // 간단한 알림 표시 (선택적)
+            console.log(`${type.toUpperCase()}: ${message}`);
+        }
+
+        // 세션 정보 업데이트 (개발자 모드 버튼 유지)
+        function updateSessionInfo(text) {
+            const sessionInfo = document.getElementById('sessionInfo');
+            const sessionInfoText = sessionInfo.querySelector('.session-info-text');
+            if (sessionInfoText) {
+                sessionInfoText.textContent = text;
+            }
+        }
+
+        // 개발자 모드 토글
+        function toggleDeveloperMode() {
+            const btn = document.getElementById('developerModeBtn');
+            const panel = document.getElementById('developerPanel');
+            const container = document.querySelector('.container');
+            
+            developerModeActive = !developerModeActive;
+            
+            if (developerModeActive) {
+                btn.classList.add('active');
+                btn.innerHTML = '🔧 Dev Mode (ON)';
+                panel.classList.add('active');
+                container.classList.add('developer-mode');
+                updateDeveloperPanel();
+                loadSettingsInfo();
+                
+                // 서버 상태 모니터링 시작
+                startServerStatusMonitoring();
+                // 리소스 모니터링 시작
+                updateResourceMonitoring();
+                console.log('개발자 모드 활성화');
+            } else {
+                btn.classList.remove('active');
+                btn.innerHTML = '🔧 Dev Mode';
+                panel.classList.remove('active');
+                container.classList.remove('developer-mode');
+                
+                // 서버 상태 모니터링 중지
+                stopServerStatusMonitoring();
+                // 리소스 모니터링 중지
+                stopResourceMonitoring();
+                
+                // 개발자 모드 관련 데이터 초기화
+                clearDeveloperData();
+                console.log('개발자 모드 비활성화');
+            }
+        }
+
+        // 개발자 모드 데이터 초기화
+        function clearDeveloperData() {
+            // 요청 로그 초기화
+            requestLog = [];
+            updateRequestLogDisplay();
+            
+            // 서버 상태 초기화
+            serverStatusOk = false;
+            
+            // 시스템 정보 초기화
+            document.getElementById('devServerStatus').textContent = '확인 중...';
+            document.getElementById('devResponseStatus').textContent = '대기 중';
+            
+            // 리소스 사용량 초기화
+            document.getElementById('devCpuUsage').textContent = '0%';
+            document.getElementById('devRamUsage').textContent = '0 GB / 0 GB (0%)';
+            document.getElementById('devGpu1Usage').textContent = '0%';
+            document.getElementById('devGpu2Usage').textContent = '0%';
+            document.getElementById('devVram1Usage').textContent = '0 MB / 0 MB (0%)';
+            document.getElementById('devVram2Usage').textContent = '0 MB / 0 MB (0%)';
+            
+            // 설정 정보 초기화
+            document.getElementById('devSettingsInfo').textContent = '설정 정보를 불러오는 중...';
+        }
+
+        // 개발자 패널 정보 업데이트
+        function updateDeveloperPanel() {
+            // 개발자 모드가 비활성화된 경우 업데이트하지 않음
+            if (!developerModeActive) {
+                return;
+            }
+            
+            // 응답 상태 업데이트
+            document.getElementById('devResponseStatus').textContent = isGenerating ? '응답 생성 중...' : '대기 중';
+            
+            // 리소스 모니터링 상태 업데이트
+            updateResourceMonitoring();
+        }
+
+        // 요청 로그 추가
+        function addRequestLog(type, data) {
+            // 개발자 모드가 비활성화된 경우 로그를 기록하지 않음
+            if (!developerModeActive) {
+                return;
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = {
+                timestamp,
+                type,
+                data: typeof data === 'object' ? JSON.stringify(data, null, 2) : data
+            };
+            
+            requestLog.unshift(logEntry);
+            if (requestLog.length > 20) {
+                requestLog = requestLog.slice(0, 20);
+            }
+            
+            updateRequestLogDisplay();
+        }
+
+        // 요청 로그 표시 업데이트
+        function updateRequestLogDisplay() {
+            const logElement = document.getElementById('devRequestLog');
+            if (requestLog.length === 0) {
+                logElement.textContent = '요청 로그가 없습니다.';
+                return;
+            }
+            
+            const logText = requestLog.map(entry => 
+                `[${entry.timestamp}] ${entry.type}\n${entry.data}\n${'-'.repeat(50)}`
+            ).join('\n');
+            
+            logElement.textContent = logText;
+        }
+
+        // 요청 로그 지우기
+        function clearRequestLog() {
+            requestLog = [];
+            updateRequestLogDisplay();
+        }
+
+        // 설정 정보 로드
+        async function loadSettingsInfo() {
+            // 개발자 모드가 비활성화된 경우 로드하지 않음
+            if (!developerModeActive) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/settings');
+                const data = await response.json();
+                
+                const settingsElement = document.getElementById('devSettingsInfo');
+                settingsElement.textContent = JSON.stringify(data, null, 2);
+                
+                addRequestLog('설정 정보 로드', data);
+            } catch (error) {
+                const settingsElement = document.getElementById('devSettingsInfo');
+                settingsElement.textContent = `설정 정보 로드 실패: ${error.message}`;
+                addRequestLog('설정 정보 로드 실패', error.message);
             }
         }
 
@@ -1140,8 +1954,14 @@
             }
         }
 
-        // 페이지 로드 시 고급 설정 기본으로 접기
+
+
+        // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', () => {
+            // 개발자 모드 초기화 - 비활성화 상태로 시작
+            developerModeActive = false;
+            clearDeveloperData();
+            
             // 고급 설정 섹션을 기본으로 접어둠
             setTimeout(() => {
                 const headers = document.querySelectorAll('.collapsible-header');
@@ -1152,6 +1972,9 @@
                     }
                 });
             }, 100);
+            
+            // 개발자 패널은 비활성화 상태이므로 정보 로드하지 않음
+            console.log('애플리케이션 초기화 완료 - 개발자 모드 비활성화 상태');
         });
     </script>
 </body>

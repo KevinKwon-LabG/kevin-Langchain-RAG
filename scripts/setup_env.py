@@ -114,7 +114,7 @@ TOP_K_PRESETS=10,20,40,60,80,100
 MAX_TOKENS_MIN=100
 MAX_TOKENS_MAX=8192
 MAX_TOKENS_STEP=100
-MAX_TOKENS_PRESETS=512,1024,2048,4096,6144,8192
+MAX_TOKENS_PRESETS=1024,2048,4096,6144,8192
 
 # =============================================================================
 # 고급 설정 - Repeat Penalty 범위

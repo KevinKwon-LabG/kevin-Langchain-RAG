@@ -1,7 +1,9 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import Optional, List, Dict, Any
 import os
 import json
+from pathlib import Path
 
 class Settings(BaseSettings):
     # =============================================================================
@@ -35,6 +37,17 @@ class Settings(BaseSettings):
     upload_folder: str = "data/documents"
     max_file_size: int = 16 * 1024 * 1024  # 16MB
     allowed_extensions: List[str] = [".pdf", ".txt", ".docx", ".md"]
+    
+    @field_validator('allowed_extensions', mode='before')
+    @classmethod
+    def parse_allowed_extensions(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # JSON 파싱 실패 시 쉼표로 구분된 문자열로 처리
+                return [ext.strip() for ext in v.split(',')]
+        return v
     
     # =============================================================================
     # LLM 모델 설정 (기본값)
@@ -74,6 +87,16 @@ class Settings(BaseSettings):
     temperature_step: float = 0.1
     temperature_presets: List[float] = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0, 1.2]
     
+    @field_validator('temperature_presets', mode='before')
+    @classmethod
+    def parse_temperature_presets(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [float(x.strip()) for x in v.split(',')]
+        return v
+    
     # =============================================================================
     # 고급 설정 - Top P 범위
     # =============================================================================
@@ -81,6 +104,16 @@ class Settings(BaseSettings):
     top_p_max: float = 1.0
     top_p_step: float = 0.05
     top_p_presets: List[float] = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+    
+    @field_validator('top_p_presets', mode='before')
+    @classmethod
+    def parse_top_p_presets(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [float(x.strip()) for x in v.split(',')]
+        return v
     
     # =============================================================================
     # 고급 설정 - Top K 범위
@@ -90,13 +123,33 @@ class Settings(BaseSettings):
     top_k_step: int = 1
     top_k_presets: List[int] = [10, 20, 40, 60, 80, 100]
     
+    @field_validator('top_k_presets', mode='before')
+    @classmethod
+    def parse_top_k_presets(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [int(x.strip()) for x in v.split(',')]
+        return v
+    
     # =============================================================================
     # 고급 설정 - 최대 토큰 수 범위
     # =============================================================================
     max_tokens_min: int = 100
     max_tokens_max: int = 8192
     max_tokens_step: int = 100
-    max_tokens_presets: List[int] = [512, 1024, 2048, 4096, 6144, 8192]
+    max_tokens_presets: List[int] = [1024, 2048, 4096, 6144, 8192]
+    
+    @field_validator('max_tokens_presets', mode='before')
+    @classmethod
+    def parse_max_tokens_presets(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [int(x.strip()) for x in v.split(',')]
+        return v
     
     # =============================================================================
     # 고급 설정 - Repeat Penalty 범위
@@ -106,6 +159,16 @@ class Settings(BaseSettings):
     repeat_penalty_step: float = 0.1
     repeat_penalty_presets: List[float] = [1.0, 1.1, 1.2, 1.3, 1.5, 1.8]
     
+    @field_validator('repeat_penalty_presets', mode='before')
+    @classmethod
+    def parse_repeat_penalty_presets(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [float(x.strip()) for x in v.split(',')]
+        return v
+    
     # =============================================================================
     # 고급 설정 - RAG 관련 범위
     # =============================================================================
@@ -113,6 +176,16 @@ class Settings(BaseSettings):
     rag_top_k_max: int = 20
     rag_top_k_step: int = 1
     rag_top_k_presets: List[int] = [3, 5, 7, 10, 15, 20]
+    
+    @field_validator('rag_top_k_presets', mode='before')
+    @classmethod
+    def parse_rag_top_k_presets(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [int(x.strip()) for x in v.split(',')]
+        return v
     
     # =============================================================================
     # 사용 가능한 모델 목록
@@ -126,6 +199,16 @@ class Settings(BaseSettings):
         {"name": "deepseek-v2:16b-lite-chat-q8_0", "size": "16 GB", "id": "1d62ef756269", "description": "DeepSeek의 V2 16B Lite 모델"}
     ]
     
+    @field_validator('available_models', mode='before')
+    @classmethod
+    def parse_available_models(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return v
+        return v
+    
     # =============================================================================
     # 시스템 프롬프트 템플릿
     # =============================================================================
@@ -134,9 +217,19 @@ class Settings(BaseSettings):
         {"name": "한국어", "prompt": "당신은 도움이 되는 한국어 어시스턴트입니다. 제공된 컨텍스트를 기반으로 질문에 답변하세요. 컨텍스트에서 관련 정보를 찾을 수 없는 경우 명확히 말씀해 주세요."},
         {"name": "코딩", "prompt": "You are a helpful programming assistant. Provide clear, well-documented code examples and explanations. Always consider best practices and security."},
         {"name": "번역", "prompt": "You are a professional translator. Provide accurate and natural translations while preserving the original meaning and context."},
-        {"name": "코딩", "prompt": "You are a summarization expert. Provide concise, accurate summaries that capture the key points and main ideas."},
+        {"name": "요약", "prompt": "You are a summarization expert. Provide concise, accurate summaries that capture the key points and main ideas."},
         {"name": "분석", "prompt": "You are an analytical assistant. Provide detailed analysis with supporting evidence and logical reasoning."}
     ]
+    
+    @field_validator('system_prompt_templates', mode='before')
+    @classmethod
+    def parse_system_prompt_templates(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return v
+        return v
     
     # =============================================================================
     # 보안 설정
@@ -154,83 +247,175 @@ class Settings(BaseSettings):
     log_backup_count: int = 5
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
+    # =============================================================================
+    # MCP 서버 설정
+    # =============================================================================
+    mcp_server_url: str = "http://localhost:11045"
+    
+    # =============================================================================
+    # 키워드 추출 서비스 설정
+    # =============================================================================
+    keyword_extractor_model: str = "gemma3b-it"
+    keyword_extractor_timeout: int = 30
+    keyword_extractor_temperature: float = 0.1
+    keyword_extractor_top_p: float = 0.9
+    keyword_extractor_max_tokens: int = 200
+    
+    # =============================================================================
+    # 웹 검색 설정
+    # =============================================================================
+    default_web_search_mode: str = "model_only"
+    web_search_modes: List[Dict[str, str]] = [
+        {"value": "model_only", "label": "모델 데이터만 사용", "description": "AI 모델의 학습된 데이터만 사용하여 답변"},
+        {"value": "mcp_server", "label": "MCP 서버 통합 검색", "description": "외부 MCP 서버의 지능형 서비스 (주식, 날씨, 웹 검색)를 자동으로 선택하여 활용"}
+    ]
+    
+    @field_validator('web_search_modes', mode='before')
+    @classmethod
+    def parse_web_search_modes(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return v
+        return v
+    
+    # =============================================================================
+    # 환경 설정
+    # =============================================================================
     class Config:
         env_file = "env.settings"
         env_file_encoding = "utf-8"
         case_sensitive = False
     
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # 환경 변수에서 파싱된 값들을 설정
+        self._parse_environment_arrays()
+    
+    def _parse_environment_arrays(self):
+        """환경 변수에서 배열 형태의 값들을 파싱합니다."""
+        # 이제 field_validator를 사용하므로 이 메서드는 더 이상 필요하지 않습니다.
+        pass
+    
     def get_available_models(self) -> List[Dict[str, Any]]:
-        """환경 변수에서 모델 목록을 파싱하거나 기본값 반환"""
-        try:
-            # 환경 변수에서 JSON 문자열로 설정된 경우 파싱
-            if hasattr(self, '_available_models_env'):
-                return json.loads(self._available_models_env)
-        except (json.JSONDecodeError, AttributeError):
-            pass
+        """사용 가능한 모델 목록을 반환합니다."""
         return self.available_models
     
     def get_system_prompt_templates(self) -> List[Dict[str, str]]:
-        """환경 변수에서 시스템 프롬프트 템플릿을 파싱하거나 기본값 반환"""
-        try:
-            # 환경 변수에서 JSON 문자열로 설정된 경우 파싱
-            if hasattr(self, '_system_prompt_templates_env'):
-                return json.loads(self._system_prompt_templates_env)
-        except (json.JSONDecodeError, AttributeError):
-            pass
+        """시스템 프롬프트 템플릿을 반환합니다."""
         return self.system_prompt_templates
     
     def get_temperature_presets(self) -> List[float]:
-        """환경 변수에서 Temperature 프리셋을 파싱하거나 기본값 반환"""
-        try:
-            if hasattr(self, '_temperature_presets_env'):
-                return [float(x.strip()) for x in self._temperature_presets_env.split(',')]
-        except (ValueError, AttributeError):
-            pass
+        """Temperature 프리셋을 반환합니다."""
         return self.temperature_presets
     
     def get_top_p_presets(self) -> List[float]:
-        """환경 변수에서 Top P 프리셋을 파싱하거나 기본값 반환"""
-        try:
-            if hasattr(self, '_top_p_presets_env'):
-                return [float(x.strip()) for x in self._top_p_presets_env.split(',')]
-        except (ValueError, AttributeError):
-            pass
+        """Top P 프리셋을 반환합니다."""
         return self.top_p_presets
     
     def get_top_k_presets(self) -> List[int]:
-        """환경 변수에서 Top K 프리셋을 파싱하거나 기본값 반환"""
-        try:
-            if hasattr(self, '_top_k_presets_env'):
-                return [int(x.strip()) for x in self._top_k_presets_env.split(',')]
-        except (ValueError, AttributeError):
-            pass
+        """Top K 프리셋을 반환합니다."""
         return self.top_k_presets
     
     def get_max_tokens_presets(self) -> List[int]:
-        """환경 변수에서 Max Tokens 프리셋을 파싱하거나 기본값 반환"""
-        try:
-            if hasattr(self, '_max_tokens_presets_env'):
-                return [int(x.strip()) for x in self._max_tokens_presets_env.split(',')]
-        except (ValueError, AttributeError):
-            pass
+        """Max Tokens 프리셋을 반환합니다."""
         return self.max_tokens_presets
     
     def get_repeat_penalty_presets(self) -> List[float]:
-        """환경 변수에서 Repeat Penalty 프리셋을 파싱하거나 기본값 반환"""
-        try:
-            if hasattr(self, '_repeat_penalty_presets_env'):
-                return [float(x.strip()) for x in self._repeat_penalty_presets_env.split(',')]
-        except (ValueError, AttributeError):
-            pass
+        """Repeat Penalty 프리셋을 반환합니다."""
         return self.repeat_penalty_presets
     
     def get_rag_top_k_presets(self) -> List[int]:
-        """환경 변수에서 RAG Top K 프리셋을 파싱하거나 기본값 반환"""
-        try:
-            if hasattr(self, '_rag_top_k_presets_env'):
-                return [int(x.strip()) for x in self._rag_top_k_presets_env.split(',')]
-        except (ValueError, AttributeError):
-            pass
+        """RAG Top K 프리셋을 반환합니다."""
         return self.rag_top_k_presets
+    
+    def get_web_search_modes(self) -> List[Dict[str, str]]:
+        """웹 검색 모드 목록을 반환합니다."""
+        return self.web_search_modes
+    
+    def validate_settings(self) -> Dict[str, Any]:
+        """설정값들의 유효성을 검증하고 결과를 반환합니다."""
+        validation_results = {
+            "valid": True,
+            "errors": [],
+            "warnings": []
+        }
+        
+        # 포트 번호 검증
+        if not (1024 <= self.port <= 65535):
+            validation_results["valid"] = False
+            validation_results["errors"].append(f"포트 번호가 유효하지 않습니다: {self.port}")
+        
+        # Ollama URL 검증
+        if not self.ollama_base_url.startswith(('http://', 'https://')):
+            validation_results["warnings"].append(f"Ollama URL 형식이 올바르지 않을 수 있습니다: {self.ollama_base_url}")
+        
+        # 파일 크기 제한 검증
+        if self.max_file_size <= 0:
+            validation_results["valid"] = False
+            validation_results["errors"].append(f"최대 파일 크기가 유효하지 않습니다: {self.max_file_size}")
+        
+        # Temperature 범위 검증
+        if not (self.temperature_min <= self.default_temperature <= self.temperature_max):
+            validation_results["warnings"].append(f"기본 Temperature가 범위를 벗어납니다: {self.default_temperature}")
+        
+        # Top P 범위 검증
+        if not (self.top_p_min <= self.default_top_p <= self.top_p_max):
+            validation_results["warnings"].append(f"기본 Top P가 범위를 벗어납니다: {self.default_top_p}")
+        
+        return validation_results
+    
+    def get_config_summary(self) -> Dict[str, Any]:
+        """설정 요약 정보를 반환합니다."""
+        return {
+            "server": {
+                "host": self.host,
+                "port": self.port,
+                "debug": self.debug,
+                "log_level": self.log_level
+            },
+            "ollama": {
+                "base_url": self.ollama_base_url,
+                "timeout": self.ollama_timeout,
+                "max_retries": self.ollama_max_retries
+            },
+            "model": {
+                "default_model": self.default_model,
+                "default_temperature": self.default_temperature,
+                "default_top_p": self.default_top_p,
+                "default_top_k": self.default_top_k
+            },
+            "rag": {
+                "enabled": self.default_use_rag,
+                "top_k_documents": self.default_top_k_documents,
+                "similarity_threshold": self.default_similarity_threshold
+            },
+            "web_search": {
+                "default_mode": self.default_web_search_mode,
+                "available_modes": len(self.web_search_modes)
+            },
+            "session": {
+                "max_age_hours": self.max_session_age_hours,
+                "max_messages": self.max_messages_per_session
+            }
+        }
 
-settings = Settings() 
+# 전역 설정 인스턴스 생성
+_settings_instance = None
+
+def get_settings() -> Settings:
+    """설정 인스턴스를 반환합니다. 싱글톤 패턴을 사용합니다."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
+
+def reload_settings() -> Settings:
+    """설정을 다시 로드합니다."""
+    global _settings_instance
+    _settings_instance = Settings()
+    return _settings_instance
+
+# 기본 설정 인스턴스 (하위 호환성을 위해 유지)
+settings = get_settings() 

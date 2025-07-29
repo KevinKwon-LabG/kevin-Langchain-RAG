@@ -8,8 +8,7 @@ from langchain.schema import Document
 
 from src.config.settings import settings
 from src.services.document_service import document_service
-from src.services.llm_decision_service import llm_decision_service
-from src.services.websearch_service import websearch_service
+
 from src.utils.time_parser import time_parser
 
 logger = logging.getLogger(__name__)
@@ -47,36 +46,15 @@ class RAGService:
         time_info = time_parser.parse_time_expressions(query)
         time_context = time_parser.get_time_context(query)
         
-        # 1. 검색 필요성 판단 (실패 시 기본적으로 검색 수행)
-        needs_search = True
-        try:
-            needs_search = llm_decision_service.needs_web_search(query, model_name=model)
-            logger.info(f"검색 필요성 판단: {needs_search}")
-        except Exception as e:
-            logger.warning(f"검색 필요성 판단 실패, 기본적으로 검색 수행: {e}")
-            needs_search = True
+
         
-        web_context = ""
-        if needs_search:
-            # 2. 구글 검색
-            try:
-                web_context = websearch_service.search_web(query)
-                logger.info(f"구글 검색 결과 사용: {len(web_context)} 문자")
-            except Exception as e:
-                logger.error(f"구글 검색 실패: {e}")
-                web_context = ""
+
         
         # 3. 기존 RAG context
         rag_context = self.retrieve_context(query, top_k=top_k)
         
-        # 4. context 합치기 (구글 검색 결과를 우선 배치)
-        context_parts = []
-        if web_context:
-            context_parts.append(f"🌐 [실시간 구글 검색 결과 - 최신 정보]\n{web_context}")
-        if rag_context:
-            context_parts.append(f"📄 [내부 문서]\n{rag_context}")
-        
-        full_context = "\n\n".join(context_parts) if context_parts else "검색된 정보가 없습니다."
+        # 4. context 설정
+        full_context = rag_context if rag_context else "검색된 정보가 없습니다."
         
         prompt = self.build_context_prompt(full_context, query, time_context)
         # 5. LLM 호출
