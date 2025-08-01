@@ -974,7 +974,7 @@
                     <div class="session-info-text">새로운 대화를 시작하세요</div>
                     <div class="session-buttons">
                         <button class="reference-btn" id="referenceBtn" onclick="toggleReferencePanel()">
-                            📚 Reference
+                            📚 RAG
                         </button>
                         <button class="developer-mode-btn" id="developerModeBtn" onclick="toggleDeveloperMode()">
                             🔧 Dev Mode
@@ -1021,11 +1021,11 @@
             <div class="reference-section">
                 <h3>📁 문서 업로드</h3>
                 <div class="upload-area">
-                    <input type="file" id="documentUpload" accept=".txt,.pdf,.doc,.docx,.md,.json,.csv,.xlsx,.xls" style="display: none;">
+                    <input type="file" id="documentUpload" accept=".txt,.pdf,.docx,.md,.json,.csv,.xlsx,.xls" style="display: none;">
                     <button class="upload-btn" onclick="document.getElementById('documentUpload').click()">
-                        📤 파일 선택
+                        📤 문서 업로드
                     </button>
-                    <p class="upload-info">지원 형식: TXT, PDF, DOC, DOCX, MD, JSON, CSV, XLSX, XLS (최대 50MB)</p>
+                    <p class="upload-info">지원 형식: TXT, PDF, DOCX (Word 문서), MD, JSON, CSV, XLSX, XLS (최대 50MB)</p>
                 </div>
             </div>
 
@@ -2016,6 +2016,26 @@
             
             // 리소스 모니터링 상태 업데이트
             updateResourceMonitoring();
+            
+            // 문서 처리 상태 업데이트
+            updateDocumentProcessingStatus();
+        }
+
+        // 문서 처리 상태 업데이트
+        async function updateDocumentProcessingStatus() {
+            try {
+                const status = await checkProcessingStatus();
+                if (status) {
+                    const devStatus = document.getElementById('devResponseStatus');
+                    if (devStatus) {
+                        const currentText = devStatus.textContent;
+                        const processingInfo = ` | 문서 처리: 큐 ${status.queue_size}개`;
+                        devStatus.textContent = currentText + processingInfo;
+                    }
+                }
+            } catch (error) {
+                console.error('문서 처리 상태 업데이트 실패:', error);
+            }
         }
 
         // 요청 로그 추가
@@ -2241,7 +2261,7 @@
             }
             
             // 파일 형식 검증
-            const allowedExtensions = ['.txt', '.pdf', '.doc', '.docx', '.md', '.json', '.csv', '.xlsx', '.xls'];
+            const allowedExtensions = ['.txt', '.pdf', '.docx', '.md', '.json', '.csv', '.xlsx', '.xls'];
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
             if (!allowedExtensions.includes(fileExtension)) {
                 alert('지원하지 않는 파일 형식입니다.');
@@ -2252,6 +2272,12 @@
             formData.append('file', file);
             
             try {
+                // 업로드 시작 알림
+                const uploadBtn = document.querySelector('.upload-btn');
+                const originalText = '📤 문서 업로드';
+                uploadBtn.textContent = '📤 업로드 중...';
+                uploadBtn.disabled = true;
+                
                 const response = await fetch('/api/documents/upload', {
                     method: 'POST',
                     body: formData
@@ -2259,9 +2285,22 @@
                 
                 if (response.ok) {
                     const result = await response.json();
-                    alert('문서가 성공적으로 업로드되었습니다.');
+                    
+                    if (result.status === 'processing') {
+                        alert('문서가 업로드되었고 처리 중입니다. 처리 완료까지 잠시 기다려주세요.');
+                        // 처리 상태 모니터링 시작
+                        monitorDocumentProcessing(result.filename);
+                    } else {
+                        alert('문서가 성공적으로 업로드되었습니다.');
+                    }
+                    
                     loadDocuments(); // 목록 새로고침
                     event.target.value = ''; // 파일 입력 초기화
+                    
+                    // 업로드 성공 시 버튼 상태 즉시 복원
+                    const uploadBtn = document.querySelector('.upload-btn');
+                    uploadBtn.textContent = originalText;
+                    uploadBtn.disabled = false;
                 } else {
                     const error = await response.json();
                     alert('업로드에 실패했습니다: ' + error.detail);
@@ -2269,6 +2308,90 @@
             } catch (error) {
                 alert('업로드 중 오류가 발생했습니다: ' + error.message);
                 console.error('업로드 실패:', error);
+                
+                // 오류 발생 시 버튼 상태 복원
+                const uploadBtn = document.querySelector('.upload-btn');
+                uploadBtn.textContent = originalText;
+                uploadBtn.disabled = false;
+            }
+        }
+
+        // 문서 처리 상태 모니터링
+        async function monitorDocumentProcessing(filename) {
+            const maxAttempts = 60; // 최대 5분 대기 (5초마다 체크)
+            let attempts = 0;
+            let isMonitoring = true;
+            
+            const checkStatus = async () => {
+                if (!isMonitoring) return;
+                
+                try {
+                    const response = await fetch('/api/documents/processing-documents');
+                    const data = await response.json();
+                    
+                    const documentStatus = data.processing_documents[filename];
+                    if (documentStatus) {
+                        if (documentStatus.status === 'completed') {
+                            alert(`문서 "${filename}" 처리가 완료되었습니다!`);
+                            loadDocuments(); // 목록 새로고침
+                            isMonitoring = false;
+                            return;
+                        } else if (documentStatus.status === 'failed') {
+                            alert(`문서 "${filename}" 처리에 실패했습니다: ${documentStatus.error}`);
+                            loadDocuments(); // 목록 새로고침
+                            isMonitoring = false;
+                            return;
+                        }
+                    } else {
+                        // 문서가 처리 목록에서 사라졌다면 완료된 것으로 간주
+                        alert(`문서 "${filename}" 처리가 완료되었습니다!`);
+                        loadDocuments(); // 목록 새로고침
+                        isMonitoring = false;
+                        return;
+                    }
+                    
+                    attempts++;
+                    if (attempts < maxAttempts && isMonitoring) {
+                        // 5초 후 다시 체크
+                        setTimeout(checkStatus, 5000);
+                    } else if (attempts >= maxAttempts) {
+                        alert('문서 처리 시간이 초과되었습니다. 나중에 다시 확인해주세요.');
+                        isMonitoring = false;
+                    }
+                } catch (error) {
+                    console.error('처리 상태 확인 실패:', error);
+                    attempts++;
+                    if (attempts < maxAttempts && isMonitoring) {
+                        setTimeout(checkStatus, 5000);
+                    } else if (attempts >= maxAttempts) {
+                        alert('문서 처리 상태 확인 중 오류가 발생했습니다.');
+                        isMonitoring = false;
+                    }
+                }
+            };
+            
+            // 첫 번째 체크 시작
+            setTimeout(checkStatus, 2000);
+        }
+
+        // 처리 상태 확인 함수
+        async function checkProcessingStatus() {
+            try {
+                const response = await fetch('/api/documents/processing-status');
+                const status = await response.json();
+                
+                // 개발자 모드에서 상태 표시
+                if (developerModeActive) {
+                    const devStatus = document.getElementById('devResponseStatus');
+                    if (devStatus) {
+                        devStatus.textContent = `큐: ${status.queue_size} | 스레드: ${status.processing_thread_alive ? '활성' : '비활성'}`;
+                    }
+                }
+                
+                return status;
+            } catch (error) {
+                console.error('처리 상태 확인 실패:', error);
+                return null;
             }
         }
 

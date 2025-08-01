@@ -19,6 +19,7 @@ from src.utils.session_manager import (
     build_conversation_prompt
 )
 from src.services.langchain_decision_service import langchain_decision_service, DecisionCategory
+from src.services.rag_service import rag_service
 
 from datetime import datetime
 
@@ -44,6 +45,7 @@ AVAILABLE_MODELS = [
 async def chat(request: ChatRequest):
     """
     Ollama 모델과 대화를 수행합니다.
+    RAG 기능이 활성화되어 있으면 static/RAG 디렉토리의 문서를 참고합니다.
     
     Args:
         request: 채팅 요청 (모델, 메시지, 세션 ID 등 포함)
@@ -59,7 +61,58 @@ async def chat(request: ChatRequest):
         session = get_or_create_session(request.session_id)
         debug_logger.debug(f"🆔 세션 생성/조회 완료: {session.session_id}")
         
-        # Ollama 모델 사용
+        # RAG 사용 여부 확인 (기본적으로 활성화)
+        use_rag = getattr(request, 'use_rag', True)
+        debug_logger.debug(f"🔍 RAG 사용 여부: {use_rag}")
+        
+        # RAG가 활성화된 경우 하이브리드 응답 생성
+        if use_rag:
+            debug_logger.debug("📚 하이브리드 RAG 모드로 응답 생성 시작")
+            
+            def generate_hybrid_response():
+                """하이브리드 RAG를 사용한 스트리밍 응답 생성"""
+                try:
+                    # 하이브리드 응답 생성 (RAG + 일반 지식 조합)
+                    hybrid_response = rag_service.generate_hybrid_response(
+                        query=request.message,
+                        model=request.model,
+                        top_k=request.rag_top_k or 5,
+                        system_prompt=request.system
+                    )
+                    
+                    # 응답을 청크로 분할하여 스트리밍
+                    chunk_size = 50  # 한 번에 전송할 문자 수
+                    for i in range(0, len(hybrid_response), chunk_size):
+                        chunk = hybrid_response[i:i + chunk_size]
+                        yield f"data: {json.dumps({'response': chunk})}\n\n"
+                    
+                    # 사용자 메시지를 세션에 추가
+                    add_message_to_session(session.session_id, "user", request.message, request.model)
+                    debug_logger.debug("💾 사용자 메시지 세션에 저장됨")
+                    
+                    # 어시스턴트 메시지를 세션에 추가
+                    add_message_to_session(
+                        session.session_id, 
+                        "assistant", 
+                        hybrid_response, 
+                        request.model
+                    )
+                    debug_logger.debug("💾 어시스턴트 메시지 세션에 저장됨")
+                    
+                    # 완료 신호 전송
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+                    
+                except Exception as e:
+                    debug_logger.error(f"❌ 하이브리드 응답 생성 중 오류: {e}")
+                    error_response = f"data: {json.dumps({'error': f'하이브리드 응답 생성 중 오류가 발생했습니다: {str(e)}'})}\n\n"
+                    yield error_response
+            
+            debug_logger.debug("📤 하이브리드 스트리밍 응답 반환 시작")
+            return StreamingResponse(generate_hybrid_response(), media_type="text/plain")
+        
+        # 기존 Ollama API 호출 (RAG 비활성화된 경우)
+        debug_logger.debug("🤖 일반 Ollama API 모드로 응답 생성")
+        
         # 세션에서 대화 히스토리를 가져와서 messages 배열 구성
         session_data = get_session(session.session_id)
         messages = []
@@ -164,13 +217,13 @@ async def chat(request: ChatRequest):
 async def analyze_chat_request(request: ChatRequest):
     """
     채팅 요청을 분석하여 적절한 서비스를 결정합니다.
-    Langchain decision 서비스를 사용합니다.
+    RAG 통합 Langchain decision 서비스를 사용합니다.
     
     Args:
         request: 채팅 요청 (모델, 메시지, 세션 ID 등 포함)
     
     Returns:
-        분석 결과 (서비스 결정, 이유, 신뢰도 등)
+        분석 결과 (서비스 결정, 이유, 신뢰도, RAG 메타데이터 등)
     
     Raises:
         HTTPException: 분석 중 오류가 발생한 경우
@@ -178,10 +231,33 @@ async def analyze_chat_request(request: ChatRequest):
     try:
         debug_logger.debug(f"🔍 요청 분석 시작 - 메시지: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
         
-        # Langchain decision 서비스를 사용하여 실제 분석 수행
-        debug_logger.debug("🤖 Langchain 의사결정 서비스 호출 중...")
-        decision_result = await langchain_decision_service.classify_prompt(request.message)
-        debug_logger.debug(f"📊 분류 결과: {decision_result}")
+        # RAG 사용 여부 확인 (기본적으로 활성화)
+        use_rag_for_decision = getattr(request, 'use_rag_for_decision', True)
+        debug_logger.debug(f"🔍 Decision Service RAG 사용 여부: {use_rag_for_decision}")
+        
+        # RAG 통합 Langchain decision 서비스를 사용하여 실제 분석 수행
+        debug_logger.debug("🤖 RAG 통합 Langchain 의사결정 서비스 호출 중...")
+        
+        if use_rag_for_decision:
+            # 메타데이터와 함께 분류 수행
+            metadata = await langchain_decision_service.classify_prompt_with_metadata(
+                request.message, 
+                use_rag=True
+            )
+            decision_result = metadata["classification_result"]
+            rag_context_length = metadata.get("rag_context_length", 0)
+            rag_context_preview = metadata.get("rag_context_preview", "")
+            debug_logger.debug(f"📊 RAG 통합 분류 결과: {decision_result}")
+            debug_logger.debug(f"📚 RAG 컨텍스트 길이: {rag_context_length}")
+        else:
+            # 기존 방식으로 분류 수행
+            decision_result = await langchain_decision_service.classify_prompt(
+                request.message, 
+                use_rag=False
+            )
+            rag_context_length = 0
+            rag_context_preview = ""
+            debug_logger.debug(f"📊 기존 분류 결과: {decision_result}")
         
         # 분류 결과에 따른 서비스 타입 결정
         service_type = "unknown"
@@ -216,8 +292,13 @@ async def analyze_chat_request(request: ChatRequest):
             reason = "분류 결과에 따라 웹 검색이 필요할 것으로 판단됨"
             confidence = 0.7
         
+        # RAG 컨텍스트가 있는 경우 신뢰도 향상
+        if use_rag_for_decision and rag_context_length > 0:
+            confidence = min(confidence + 0.1, 1.0)  # 최대 0.1점 향상
+            reason += f" (RAG 컨텍스트 참조: {rag_context_length}자)"
+            debug_logger.debug(f"📈 RAG 컨텍스트로 인한 신뢰도 향상: {confidence}")
+        
         # 신뢰도 기반 의사결정: 신뢰도가 낮은 경우 웹 검색으로 폴백
-        # 날씨 정보, 한국 주식 정보 등 모든 서비스 타입에 적용
         debug_logger.debug(f"🎯 최종 분류 결과 - 서비스: {service_type}, 결정: {decision}, 신뢰도: {confidence}")
         
         if confidence < 0.5:
@@ -234,7 +315,7 @@ async def analyze_chat_request(request: ChatRequest):
         else:
             debug_logger.debug(f"✅ 신뢰도 충분({confidence:.2f}), 원래 분류 유지")
         
-        # 분석 결과 구성
+        # 분석 결과 구성 (RAG 메타데이터 포함)
         result = {
             "chat_request": {
                 "message": request.message,
@@ -247,12 +328,17 @@ async def analyze_chat_request(request: ChatRequest):
                 "confidence": confidence,
                 "service_type": service_type,
                 "decision_result": decision_result,
-                "recommended_action": get_recommended_action(service_type)
+                "recommended_action": get_recommended_action(service_type),
+                "rag_metadata": {
+                    "use_rag_for_decision": use_rag_for_decision,
+                    "rag_context_length": rag_context_length,
+                    "rag_context_preview": rag_context_preview
+                }
             },
             "timestamp": datetime.now().isoformat()
         }
         
-        debug_logger.debug(f"📋 분석 완료 - 최종 결정: {decision}, 서비스: {service_type}")
+        debug_logger.debug(f"📋 분석 완료 - 최종 결정: {decision}, 서비스: {service_type}, RAG 사용: {use_rag_for_decision}")
         return result
         
     except Exception as e:
@@ -425,13 +511,17 @@ async def health_check():
         from src.utils.session_manager import get_session_stats
         session_stats = get_session_stats()
         
+        # RAG 상태 확인
+        rag_status = rag_service.get_rag_status()
+        
         health_info = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "ollama_server": ollama_status,
             "ollama_url": OLLAMA_BASE_URL,
             "session_stats": session_stats,
-            "available_models": len(AVAILABLE_MODELS)
+            "available_models": len(AVAILABLE_MODELS),
+            "rag_status": rag_status
         }
         return health_info
     except Exception as e:
@@ -442,6 +532,121 @@ async def health_check():
             "error": str(e)
         }
 
+@router.post("/rag/reload")
+async def reload_rag_documents():
+    """
+    RAG 문서들을 다시 로드합니다.
+    
+    Returns:
+        재로드 결과
+    """
+    try:
+        debug_logger.debug("🔄 RAG 문서 재로드 요청")
+        result = rag_service.reload_rag_documents()
+        debug_logger.debug(f"✅ RAG 문서 재로드 완료: {result}")
+        return result
+    except Exception as e:
+        debug_logger.error(f"❌ RAG 문서 재로드 실패: {e}")
+        logger.error(f"RAG 문서 재로드 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"RAG 문서 재로드 중 오류가 발생했습니다: {str(e)}")
 
+@router.get("/rag/status")
+async def get_rag_status():
+    """
+    RAG 서비스 상태를 조회합니다.
+    
+    Returns:
+        RAG 상태 정보
+    """
+    try:
+        debug_logger.debug("📊 RAG 상태 조회")
+        status = rag_service.get_rag_status()
+        debug_logger.debug(f"✅ RAG 상태 조회 완료: {status}")
+        return status
+    except Exception as e:
+        debug_logger.error(f"❌ RAG 상태 조회 실패: {e}")
+        logger.error(f"RAG 상태 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"RAG 상태 조회 중 오류가 발생했습니다: {str(e)}")
 
- 
+@router.put("/rag/settings")
+async def update_rag_settings(
+    similarity_threshold: Optional[float] = None,
+    context_weight: Optional[float] = None,
+    min_context_length: Optional[int] = None
+):
+    """
+    RAG 설정을 동적으로 업데이트합니다.
+    
+    Args:
+        similarity_threshold: 유사도 임계값 (0.0 ~ 1.0)
+        context_weight: 컨텍스트 가중치 (0.0 ~ 1.0)
+        min_context_length: 최소 컨텍스트 길이 (문자 수)
+    
+    Returns:
+        업데이트된 설정 정보
+    """
+    try:
+        debug_logger.debug("⚙️ RAG 설정 업데이트 요청")
+        debug_logger.debug(f"📝 업데이트할 설정: similarity_threshold={similarity_threshold}, context_weight={context_weight}, min_context_length={min_context_length}")
+        
+        # 입력값 검증
+        if similarity_threshold is not None and not (0.0 <= similarity_threshold <= 1.0):
+            raise HTTPException(status_code=400, detail="유사도 임계값은 0.0과 1.0 사이여야 합니다.")
+        
+        if context_weight is not None and not (0.0 <= context_weight <= 1.0):
+            raise HTTPException(status_code=400, detail="컨텍스트 가중치는 0.0과 1.0 사이여야 합니다.")
+        
+        if min_context_length is not None and min_context_length < 0:
+            raise HTTPException(status_code=400, detail="최소 컨텍스트 길이는 0 이상이어야 합니다.")
+        
+        # 설정 업데이트
+        result = rag_service.update_settings(
+            similarity_threshold=similarity_threshold,
+            context_weight=context_weight,
+            min_context_length=min_context_length
+        )
+        
+        debug_logger.debug(f"✅ RAG 설정 업데이트 완료: {result}")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        debug_logger.error(f"❌ RAG 설정 업데이트 실패: {e}")
+        logger.error(f"RAG 설정 업데이트 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"RAG 설정 업데이트 중 오류가 발생했습니다: {str(e)}")
+
+@router.get("/rag/settings")
+async def get_rag_settings():
+    """
+    현재 RAG 설정을 조회합니다.
+    
+    Returns:
+        현재 RAG 설정 정보
+    """
+    try:
+        debug_logger.debug("⚙️ RAG 설정 조회")
+        status = rag_service.get_rag_status()
+        
+        if "settings" in status:
+            settings = status["settings"]
+            debug_logger.debug(f"✅ RAG 설정 조회 완료: {settings}")
+            return {
+                "status": "success",
+                "settings": settings,
+                "description": {
+                    "similarity_threshold": "유사도 임계값 (0.0 ~ 1.0) - 높을수록 더 관련성 높은 문서만 포함",
+                    "context_weight": "컨텍스트 가중치 (0.0 ~ 1.0) - RAG 데이터의 중요도",
+                    "min_context_length": "최소 컨텍스트 길이 (문자 수) - 이보다 짧으면 일반 응답으로 폴백"
+                }
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "설정 정보를 가져올 수 없습니다."
+            }
+            
+    except Exception as e:
+        debug_logger.error(f"❌ RAG 설정 조회 실패: {e}")
+        logger.error(f"RAG 설정 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"RAG 설정 조회 중 오류가 발생했습니다: {str(e)}")

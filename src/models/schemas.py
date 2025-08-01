@@ -14,6 +14,9 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="세션 ID")
     system: Optional[str] = Field("You are a helpful assistant.", description="시스템 프롬프트")
     options: Optional[Dict[str, Any]] = Field({}, description="추가 옵션")
+    use_rag: Optional[bool] = Field(True, description="RAG 기능 사용 여부")
+    rag_top_k: Optional[int] = Field(5, description="RAG 검색 시 가져올 문서 수")
+    use_rag_for_decision: Optional[bool] = Field(True, description="Decision Service에서 RAG 사용 여부")
 
 class SessionInfo(BaseModel):
     """세션 정보 모델"""

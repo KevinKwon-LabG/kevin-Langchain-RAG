@@ -27,14 +27,16 @@ class Settings(BaseSettings):
     # 벡터 데이터베이스 설정
     # =============================================================================
     chroma_persist_directory: str = "data/vectorstore"
-    embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model_name: str = "nlpai-lab/KURE-v1"  # KURE (Korea University Retrieval Embedding)
     embedding_device: str = "cpu"
+    chroma_anonymized_telemetry: bool = False
+    huggingface_api_key: Optional[str] = None
     
     # =============================================================================
     # 문서 처리 설정
     # =============================================================================
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
+    chunk_size: int = 500
+    chunk_overlap: int = 100
     max_tokens: int = 4000
     upload_folder: str = "data/documents"
     max_file_size: int = 16 * 1024 * 1024  # 16MB
@@ -248,6 +250,35 @@ class Settings(BaseSettings):
     log_max_size: int = 10 * 1024 * 1024  # 10MB
     log_backup_count: int = 5
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    
+    # =============================================================================
+    # 웹 검색 설정
+    # =============================================================================
+    default_web_search_mode: str = "model_only"
+    web_search_modes: List[Dict[str, str]] = [
+        {"value": "model_only", "label": "모델 데이터만 사용", "description": "AI 모델의 학습된 데이터만 사용하여 답변"},        
+        {"value": "mcp_server", "label": "MCP 서버 검색", "description": "외부 MCP 서버의 웹 검색 서비스 사용"}
+    ]
+    
+    @field_validator('web_search_modes', mode='before')
+    @classmethod
+    def parse_web_search_modes(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return v
+        return v
+    
+    # =============================================================================
+    # MCP 서버 설정
+    # =============================================================================
+    mcp_server_host: str = "1.237.52.240"
+    mcp_server_port: str = "11045"
+    mcp_server_url: str = "http://1.237.52.240:11045"
+    mcp_timeout: str = "30"
+    mcp_max_retries: str = "3"
+    mcp_enabled: str = "true"
     
 
     

@@ -41,7 +41,7 @@ OLLAMA_MAX_RETRIES=3
 # 벡터 데이터베이스 설정
 # =============================================================================
 CHROMA_PERSIST_DIRECTORY=data/vectorstore
-EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_MODEL_NAME=BM-K/KURE
 EMBEDDING_DEVICE=cpu
 
 # =============================================================================

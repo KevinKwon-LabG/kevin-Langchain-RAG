@@ -78,18 +78,7 @@ async def index(request: Request):
     return templates.TemplateResponse("app.html", {"request": request})
 
 
-@app.get("/decision-test", response_class=HTMLResponse)
-async def decision_test(request: Request):
-    """
-    의사결정 서비스 테스트 페이지를 반환합니다.
-    
-    Args:
-        request: FastAPI 요청 객체
-    
-    Returns:
-        HTML 응답
-    """
-    return templates.TemplateResponse("decision_test.html", {"request": request})
+
 
 
 

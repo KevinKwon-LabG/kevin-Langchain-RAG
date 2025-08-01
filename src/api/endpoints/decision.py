@@ -19,6 +19,7 @@ class PromptRequest(BaseModel):
     """사용자 prompt 요청 모델"""
     prompt: str
     use_async: bool = True
+    use_rag: bool = True
 
 
 class DecisionResponse(BaseModel):
@@ -27,6 +28,7 @@ class DecisionResponse(BaseModel):
     decision_result: str
     success: bool
     error_message: Optional[str] = None
+    rag_metadata: Optional[dict] = None
 
 
 @router.post("/classify", response_model=DecisionResponse)
@@ -47,20 +49,64 @@ async def classify_prompt(request: PromptRequest):
             debug_logger.warning("⚠️ 빈 프롬프트 요청")
             raise HTTPException(status_code=400, detail="Prompt cannot be empty")
         
+        # RAG 사용 여부 확인
+        debug_logger.debug(f"🔍 RAG 사용 여부: {request.use_rag}")
+        
         # 비동기 또는 동기 방식으로 분류 수행
         if request.use_async:
             debug_logger.debug("🔄 비동기 분류 수행")
-            decision_result = await decision_service.classify_prompt(request.prompt)
+            if request.use_rag:
+                # RAG 통합 분류 (메타데이터 포함)
+                metadata = await decision_service.classify_prompt_with_metadata(
+                    request.prompt, 
+                    use_rag=True
+                )
+                decision_result = metadata["classification_result"]
+                rag_metadata = {
+                    "use_rag": True,
+                    "rag_context_length": metadata.get("rag_context_length", 0),
+                    "rag_context_preview": metadata.get("rag_context_preview", ""),
+                    "model_used": metadata.get("model_used", "")
+                }
+            else:
+                # 기존 분류
+                decision_result = await decision_service.classify_prompt(
+                    request.prompt, 
+                    use_rag=False
+                )
+                rag_metadata = {"use_rag": False}
         else:
             debug_logger.debug("⚡ 동기 분류 수행")
-            decision_result = decision_service.classify_prompt_sync(request.prompt)
+            if request.use_rag:
+                # RAG 통합 분류 (메타데이터 포함)
+                metadata = await decision_service.classify_prompt_with_metadata(
+                    request.prompt, 
+                    use_rag=True
+                )
+                decision_result = metadata["classification_result"]
+                rag_metadata = {
+                    "use_rag": True,
+                    "rag_context_length": metadata.get("rag_context_length", 0),
+                    "rag_context_preview": metadata.get("rag_context_preview", ""),
+                    "model_used": metadata.get("model_used", "")
+                }
+            else:
+                # 기존 분류
+                decision_result = decision_service.classify_prompt_sync(
+                    request.prompt, 
+                    use_rag=False
+                )
+                rag_metadata = {"use_rag": False}
         
         debug_logger.debug(f"✅ 분류 완료 - 결과: {decision_result}")
+        if request.use_rag:
+            debug_logger.debug(f"📚 RAG 메타데이터: {rag_metadata}")
         
         return DecisionResponse(
             user_prompt=request.prompt,
             decision_result=decision_result,
-            success=True
+            success=True,
+            rag_metadata=rag_metadata
         )
         
     except HTTPException:

@@ -3,6 +3,10 @@ Ollama 대화형 인터페이스 - 메인 실행 파일
 새로운 모듈화된 구조를 사용합니다.
 """
 
+import warnings
+# PyTorch FutureWarning 억제
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 import uvicorn
 import argparse
 import logging
@@ -225,13 +229,7 @@ def main():
     # 로깅 설정
     setup_logging(args.debug)
     
-    # 디버그 모드에서 로깅 테스트
-    if args.debug:
-        test_logger = logging.getLogger("test_debug")
-        test_logger.debug("🧪 로깅 시스템 테스트 - 이 메시지가 보이면 로깅이 정상 작동합니다!")
-        test_logger.info("ℹ️ 정보 로그 테스트")
-        test_logger.warning("⚠️ 경고 로그 테스트")
-        test_logger.error("❌ 오류 로그 테스트")
+
     
     # 서버 실행 설정
     log_level = "info" if args.debug else "error"  # debug 대신 info 사용
