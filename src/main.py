@@ -13,7 +13,11 @@ from datetime import datetime
 
 
 # API 엔드포인트 라우터들 import
-from src.api.endpoints import chat, health, models, sessions, settings, mcp
+from src.api.endpoints import chat, health, models, sessions, settings, documents
+
+# 의사결정 라우터 로드
+from src.api.endpoints import decision
+DECISION_SERVICE_AVAILABLE = True
 
 
 # 로깅 설정
@@ -24,7 +28,7 @@ logger = logging.getLogger(__name__)
 # FastAPI 앱 생성
 app = FastAPI(
     title="Ollama Conversation Interface",
-    description="FastAPI 기반 Ollama 대화형 인터페이스 - 주식, 날씨, 웹 검색, 파일 시스템, 데이터베이스 통합 서비스",
+    description="FastAPI 기반 Ollama 대화형 인터페이스 - 날씨, 웹 검색, 파일 시스템, 데이터베이스 통합 서비스",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -52,7 +56,12 @@ app.include_router(health.router, prefix="", tags=["Health"]) # 헬스 체크 �
 app.include_router(models.router, prefix="", tags=["Models"]) # 모델 관리 라우터 - Ollama 모델 목록 조회, 모델 상세 정보, 모델 다운로드/삭제 등
 app.include_router(sessions.router, prefix="", tags=["Sessions"]) # 세션 관리 라우터 - 채팅 세션 생성, 조회, 삭제, 제목 업데이트 등
 app.include_router(settings.router, prefix="", tags=["Settings"]) # 설정 관리 라우터 - 설정 조회, 리로드, 검증, 프리셋 관리 등
-app.include_router(mcp.router, prefix="", tags=["MCP"]) # MCP 서버 라우터 - 외부 MCP 서버와의 통신, 모델 완성, 임베딩 등
+app.include_router(documents.router, prefix="", tags=["Documents"]) # 문서 관리 라우터 - 파일 업로드, 목록 조회, 삭제 등
+
+# 의사결정 라우터는 사용 가능한 경우에만 등록
+if DECISION_SERVICE_AVAILABLE:
+    app.include_router(decision.router) # 의사결정 라우터 - 사용자 prompt 분류 기능
+
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -67,6 +76,20 @@ async def index(request: Request):
         HTML 응답
     """
     return templates.TemplateResponse("app.html", {"request": request})
+
+
+@app.get("/decision-test", response_class=HTMLResponse)
+async def decision_test(request: Request):
+    """
+    의사결정 서비스 테스트 페이지를 반환합니다.
+    
+    Args:
+        request: FastAPI 요청 객체
+    
+    Returns:
+        HTML 응답
+    """
+    return templates.TemplateResponse("decision_test.html", {"request": request})
 
 
 
@@ -130,26 +153,20 @@ async def log_requests(request: Request, call_next):
     """
     start_time = datetime.now()
     
-    # 요청 로깅
-    logger.info(f"요청 시작: {request.method} {request.url.path}")
+    # health API 요청은 로깅하지 않음
+    if not request.url.path.startswith('/api/health') and not request.url.path.startswith('/api/system/resources') and not request.url.path.startswith('/api/info'):
+        # 요청 로깅
+        logger.info(f"요청 시작: {request.method} {request.url.path}")
     
     response = await call_next(request)
     
-    # 응답 로깅
-    process_time = (datetime.now() - start_time).total_seconds()
-    logger.info(f"요청 완료: {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}초)")
+    # health API 요청은 로깅하지 않음
+    if not request.url.path.startswith('/api/health') and not request.url.path.startswith('/api/system/resources') and not request.url.path.startswith('/api/info'):
+        # 응답 로깅
+        process_time = (datetime.now() - start_time).total_seconds()
+        logger.info(f"요청 완료: {request.method} {request.url.path} - {response.status_code} ({process_time:.3f}초)")
     
     return response
 
 
-if __name__ == "__main__":
-    import uvicorn
-    
-    # 개발 서버 실행
-    uvicorn.run(
-        "src.main:app",
-        host="0.0.0.0",
-        port=11040,
-        reload=True,
-        log_level="info"
-    ) 
+ 

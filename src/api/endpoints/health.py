@@ -15,8 +15,8 @@ except ImportError:
     PSUTIL_AVAILABLE = False
     logging.debug("psutil 모듈이 설치되지 않았습니다. 시스템 리소스 정보를 수집할 수 없습니다.")
 
-# 로깅 설정
-logger = logging.getLogger(__name__)
+# 로깅 설정 - health API는 로깅 비활성화
+# logger = logging.getLogger(__name__)
 
 # 라우터 생성
 router = APIRouter()
@@ -41,7 +41,8 @@ async def get_health():
                 response = await client.get(f"{settings.ollama_base_url}/api/tags")
                 ollama_connected = response.status_code == 200
         except Exception as e:
-            logger.warning(f"Ollama 서버 연결 실패: {e}")
+            # logger.warning(f"Ollama 서버 연결 실패: {e}")
+            pass
         
         return {
             "status": "healthy",
@@ -49,9 +50,7 @@ async def get_health():
             "version": "1.0.0",
             "services": {
                 "chat_service": "healthy",
-                "stock_service": "healthy", 
                 "file_service": "healthy",
-                "weather_service": "healthy",
                 "web_service": "healthy",
                 "database_service": "healthy"
             },
@@ -61,7 +60,7 @@ async def get_health():
             "ollama_connected": ollama_connected
         }
     except Exception as e:
-        logger.error(f"Health check 실패: {e}")
+        # logger.error(f"Health check 실패: {e}")
         return {
             "status": "unhealthy",
             "timestamp": datetime.now().isoformat(),
@@ -143,7 +142,7 @@ async def get_system_resources():
                                 "percent": round((int(vram_used) / int(vram_total)) * 100, 1) if vram_used.isdigit() and vram_total.isdigit() and int(vram_total) > 0 else 0
                             })
         except Exception as e:
-            logger.warning(f"GPU 정보 수집 실패: {e}")
+            # logger.warning(f"GPU 정보 수집 실패: {e}")
             # GPU가 없는 경우 기본값
             gpu_info = [{"id": 0, "name": "GPU 없음", "utilization": 0}]
             vram_info = [{"id": 0, "used_mb": 0, "total_mb": 0, "percent": 0}]
@@ -163,7 +162,7 @@ async def get_system_resources():
         }
         
     except Exception as e:
-        logger.error(f"시스템 리소스 정보 수집 실패: {e}")
+        # logger.error(f"시스템 리소스 정보 수집 실패: {e}")
         return {
             "timestamp": datetime.now().isoformat(),
             "error": str(e),
@@ -195,7 +194,7 @@ async def get_info():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        logger.error(f"Info 조회 실패: {e}")
+        # logger.error(f"Info 조회 실패: {e}")
         return {
             "error": str(e),
             "timestamp": datetime.now().isoformat()

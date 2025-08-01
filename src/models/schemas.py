@@ -37,14 +37,6 @@ class SessionData(BaseModel):
     created_at: str = Field(..., description="생성 시간")
     last_active: str = Field(..., description="마지막 활동 시간")
 
-class StockQuery(BaseModel):
-    """주식 조회 요청 모델"""
-    stock_code: Optional[str] = Field(None, description="주식 코드")
-    stock_name: Optional[str] = Field(None, description="주식명")
-    start_date: Optional[str] = Field(None, description="시작 날짜")
-    end_date: Optional[str] = Field(None, description="종료 날짜")
-    query_type: Optional[str] = Field("general", description="조회 유형")
-
 class FileWriteRequest(BaseModel):
     """파일 쓰기 요청 모델"""
     content: str = Field(..., description="파일 내용")
@@ -65,9 +57,7 @@ class WebSearchRequest(BaseModel):
     query: str = Field(..., description="검색어")
     max_results: int = Field(5, description="최대 결과 수")
 
-class WeatherRequest(BaseModel):
-    """날씨 요청 모델"""
-    city: str = Field(..., description="도시명")
+
 
 class FileSearchRequest(BaseModel):
     """파일 검색 요청 모델"""

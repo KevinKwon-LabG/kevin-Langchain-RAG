@@ -8,7 +8,7 @@ from langchain.schema import Document
 from src.config.settings import settings
 from src.services.document_service import document_service
 
-from src.utils.time_parser import time_parser
+
 
 logger = logging.getLogger(__name__)
 
@@ -41,24 +41,16 @@ class RAGService:
         return self.context_template.format(context=context, question=question, time_context=time_context)
 
     def generate_response_with_rag(self, query: str, model: str, top_k: int = 5, system_prompt: Optional[str] = None) -> str:
-        # 0. 시간 정보 파싱
-        time_info = time_parser.parse_time_expressions(query)
-        time_context = time_parser.get_time_context(query)
-        
-
-        
-
-        
-        # 3. 기존 RAG context
+        # RAG context 검색
         rag_context = self.retrieve_context(query, top_k=top_k)
         
-        # 4. context 설정
+        # context 설정
         full_context = rag_context if rag_context else "검색된 정보가 없습니다."
         
-        prompt = self.build_context_prompt(full_context, query, time_context)
-        # 5. LLM 호출
-        from langchain_community.llms import Ollama
-        llm = Ollama(model=model)
+        prompt = self.build_context_prompt(full_context, query, "")
+        # LLM 호출
+        from langchain_ollama import OllamaLLM
+        llm = OllamaLLM(model=model)
         response = llm.invoke(prompt)
         return response
 

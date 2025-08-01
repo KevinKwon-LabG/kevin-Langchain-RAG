@@ -21,15 +21,7 @@ class Settings(BaseSettings):
     ollama_timeout: int = 120
     ollama_max_retries: int = 3
     
-    # =============================================================================
-    # MCP (Model Context Protocol) 설정
-    # =============================================================================
-    mcp_server_host: str = "1.237.52.240"
-    mcp_server_port: int = 11045
-    mcp_server_url: str = "http://1.237.52.240:11045"
-    mcp_timeout: int = 30
-    mcp_max_retries: int = 3
-    mcp_enabled: bool = True
+
     
     # =============================================================================
     # 벡터 데이터베이스 설정
@@ -257,25 +249,7 @@ class Settings(BaseSettings):
     log_backup_count: int = 5
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
-    # =============================================================================
-    # 웹 검색 설정
-    # =============================================================================
-    default_web_search_mode: str = "model_only"
-    web_search_modes: List[Dict[str, str]] = [
-        {"value": "model_only", "label": "모델 데이터만 사용", "description": "AI 모델의 학습된 데이터만 사용하여 답변"},
-        {"value": "duckduckgo", "label": "DuckDuckGo 검색", "description": "DuckDuckGo를 사용하여 실시간 웹 검색 수행"},
-        {"value": "mcp_server", "label": "MCP 서버 검색", "description": "외부 MCP 서버의 웹 검색 서비스 사용"}
-    ]
-    
-    @field_validator('web_search_modes', mode='before')
-    @classmethod
-    def parse_web_search_modes(cls, v):
-        if isinstance(v, str):
-            try:
-                return json.loads(v)
-            except json.JSONDecodeError:
-                return v
-        return v
+
     
 
     
