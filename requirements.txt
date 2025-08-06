@@ -10,6 +10,11 @@ langchain-core==0.3.72
 langchain-openai==0.2.8
 langchain-huggingface==0.3.1
 langchain-chroma==0.2.5
+langchain-ollama==0.3.6
+
+# MCP (Model Context Protocol) Support
+mcp==1.0.0
+mcp-client==1.0.0
 
 # Vector Database
 chromadb==1.0.15
@@ -23,12 +28,30 @@ python-docx==1.2.0
 docx2txt==0.9
 tiktoken==0.9.0
 
+# Korean NLP Processing
+konlpy==0.6.0
+soynlp==0.0.493
+kiwipiepy==0.18.0
+
+# Excel Processing
+pandas==2.1.4
+openpyxl==3.1.2
+xlrd==2.0.1
+
 # HTTP and Utilities
 requests==2.31.0
+aiohttp==3.9.1
+httpx==0.27.0
 jinja2==3.1.2
 pydantic==2.11.7
 pydantic-settings==2.10.1
 
-# Development and Testing
+# Web Scraping
+beautifulsoup4==4.12.2
+
+# Development and Testing (선택적)
 pytest>=8.2.0
-pytest-asyncio>=0.24.0 
+pytest-asyncio>=0.24.0
+
+# System Monitoring (선택적)
+psutil>=5.9.0 

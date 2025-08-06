@@ -12,7 +12,20 @@ import argparse
 import logging
 import sys
 import os
-from src.main import app
+from logging.handlers import RotatingFileHandler
+
+# 현재 디렉토리를 Python 경로에 추가
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
+try:
+    from src.main import app
+except ImportError as e:
+    print(f"❌ 모듈 import 오류: {e}")
+    print(f"📁 현재 디렉토리: {current_dir}")
+    print(f"🐍 Python 경로: {sys.path}")
+    sys.exit(1)
 
 def create_custom_log_config(debug_mode: bool):
     """
@@ -44,9 +57,11 @@ def create_custom_log_config(debug_mode: bool):
                 },
                 "file": {
                     "formatter": "default",
-                    "class": "logging.FileHandler",
+                    "class": "logging.handlers.RotatingFileHandler",
                     "filename": "app_debug.log",
-                    "mode": "w",
+                    "mode": "a",
+                    "maxBytes": 10*1024*1024,  # 10MB
+                    "backupCount": 5,
                     "encoding": "utf-8"
                 },
                 "access": {
@@ -56,9 +71,11 @@ def create_custom_log_config(debug_mode: bool):
                 },
                 "access_file": {
                     "formatter": "access",
-                    "class": "logging.FileHandler",
+                    "class": "logging.handlers.RotatingFileHandler",
                     "filename": "app_debug.log",
                     "mode": "a",
+                    "maxBytes": 10*1024*1024,  # 10MB
+                    "backupCount": 5,
                     "encoding": "utf-8"
                 }
             },
@@ -140,7 +157,7 @@ def create_custom_log_config(debug_mode: bool):
 
 def setup_logging(debug_mode: bool):
     """
-    로깅 설정을 구성합니다.
+    로깅 설정을 구성합니다. 
     
     Args:
         debug_mode: 디버그 모드 여부
@@ -156,7 +173,13 @@ def setup_logging(debug_mode: bool):
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.StreamHandler(sys.stdout),
-                logging.FileHandler('app_debug.log', mode='w', encoding='utf-8')
+                RotatingFileHandler(
+                    'app_debug.log', 
+                    mode='a', 
+                    maxBytes=10*1024*1024,  # 10MB
+                    backupCount=5,
+                    encoding='utf-8'
+                )
             ],
             force=True
         )
@@ -167,9 +190,14 @@ def setup_logging(debug_mode: bool):
         
         # 모든 debug 로거 설정
         debug_loggers = [
-            "langchain_decision_debug",
+            # 디버그 로거 목록
             "chat_debug",
-            "decision_debug",
+            "weather_debug",
+            "stock_debug",
+            "web_search_debug",
+            "weather_api_debug",
+            "stock_api_debug",
+            "web_search_api_debug",
             "uvicorn",
             "uvicorn.access",
             "uvicorn.error",
@@ -217,43 +245,58 @@ def setup_logging(debug_mode: bool):
 
 def main():
     """메인 실행 함수"""
-    parser = argparse.ArgumentParser(description="Ollama 대화형 인터페이스")
-    parser.add_argument(
-        "-d", "--debug",
-        action="store_true",
-        help="디버그 모드로 실행 (상세한 로그 출력)"
-    )
-    
-    args = parser.parse_args()
-    
-    # 로깅 설정
-    setup_logging(args.debug)
-    
-
-    
-    # 서버 실행 설정
-    log_level = "info" if args.debug else "error"  # debug 대신 info 사용
-    
-    print(f"🚀 Ollama 대화형 인터페이스 시작 중...")
-    print(f"🌐 서버 주소: http://0.0.0.0:11040")
-    print(f"🔧 로그 레벨: {log_level}")
-    
-    if not args.debug:
-        print("💡 상세한 로그를 보려면 '-d' 옵션을 사용하세요.")
-    
-    # 커스텀 로그 설정 생성
-    log_config = create_custom_log_config(args.debug)
-    
-    # 개발 서버 실행
-    uvicorn.run(
-        "src.main:app",
-        host="0.0.0.0",
-        port=11040,
-        reload=True,
-        log_level=log_level,
-        access_log=args.debug,  # 디버그 모드에서만 access 로그 활성화
-        log_config=log_config  # 커스텀 로그 설정 사용
-    )
+    try:
+        parser = argparse.ArgumentParser(description="Ollama 대화형 인터페이스")
+        parser.add_argument(
+            "-d", "--debug",
+            action="store_true",
+            help="디버그 모드로 실행 (상세한 로그 출력)"
+        )
+        
+        args = parser.parse_args()
+        
+        # 로깅 설정
+        setup_logging(args.debug)
+        
+        # 서버 실행 설정
+        log_level = "info" if args.debug else "error"  # debug 대신 info 사용
+        
+        # 환경 설정에서 서비스 정보 가져오기
+        try:
+            from src.config.settings import get_settings
+            settings = get_settings()
+        except Exception as e:
+            print(f"❌ 설정 로드 오류: {e}")
+            sys.exit(1)
+        
+        print(f"🚀 Ollama 대화형 인터페이스 시작 중...")
+        print(f"🌐 서버 주소: {settings.service_url}")
+        print(f"🔧 로그 레벨: {log_level}")
+        
+        if not args.debug:
+            print("💡 상세한 로그를 보려면 '-d' 옵션을 사용하세요.")
+        
+        # 커스텀 로그 설정 생성
+        log_config = create_custom_log_config(args.debug)
+        
+        # 개발 서버 실행
+        uvicorn.run(
+            "src.main:app",
+            host=settings.host,
+            port=settings.port,
+            reload=True,
+            reload_dirs=["src", "templates"],  # 감시할 디렉토리 명시
+            log_level=log_level,
+            access_log=args.debug,  # 디버그 모드에서만 access 로그 활성화
+            log_config=log_config  # 커스텀 로그 설정 사용
+        )
+    except KeyboardInterrupt:
+        print("\n🛑 사용자에 의해 중단되었습니다.")
+    except Exception as e:
+        print(f"❌ 애플리케이션 실행 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

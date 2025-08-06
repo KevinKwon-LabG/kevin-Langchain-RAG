@@ -291,6 +291,186 @@
             box-shadow: 0 4px 12px rgba(155, 89, 182, 0.3);
         }
 
+        .upload-btn:disabled {
+            background: linear-gradient(135deg, #bdc3c7, #95a5a6);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+            opacity: 0.6;
+        }
+
+        /* MCP 패널 스타일 */
+        .mcp-panel {
+            position: fixed;
+            top: 0;
+            left: -100%;
+            width: 50%;
+            height: 100vh;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            transition: left 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .mcp-panel.active {
+            left: 0;
+        }
+
+        .mcp-panel-header {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+        }
+
+        .mcp-panel-header h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .mcp-panel-close {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .mcp-panel-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .mcp-panel-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            color: #2c3e50;
+        }
+
+        .mcp-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .mcp-section h3 {
+            margin: 0 0 15px 0;
+            color: #3498db;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .mcp-service {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .mcp-input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .mcp-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+
+        .mcp-btn-service {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .mcp-btn-service:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .mcp-btn-service:disabled {
+            background: linear-gradient(135deg, #bdc3c7, #95a5a6);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+            opacity: 0.6;
+        }
+
+        .mcp-result {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 10px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .mcp-status {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 15px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .mcp-btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-left: 10px;
+            height: 36px;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .mcp-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .upload-btn:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+
         .upload-info {
             font-size: 0.8rem;
             color: #7f8c8d;
@@ -389,6 +569,23 @@
             opacity: 0.5;
         }
 
+        .reset-btn {
+            transition: all 0.3s ease;
+        }
+
+        .reset-btn:hover {
+            background: #c0392b !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
+        }
+
+        .reset-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
         .sidebar {
             width: 300px;
             background: rgba(248, 249, 250, 0.9);
@@ -407,11 +604,12 @@
 
         .sidebar h3 {
             color: #2c3e50;
-            margin-bottom: 15px;
+            margin-bottom: 25px;
             font-size: 1.2rem;
         }
 
         .model-selector {
+            margin-top: 10px;
             margin-bottom: 20px;
         }
 
@@ -648,6 +846,36 @@
             line-height: 1.6;
             white-space: pre-wrap;
         }
+        
+        .message-content strong {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .message-content em {
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        
+        .message-content code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #e74c3c;
+        }
+        
+        .message-content a {
+            color: #3498db;
+            text-decoration: underline;
+            word-break: break-all;
+        }
+        
+        .message-content a:hover {
+            color: #2980b9;
+            text-decoration: none;
+        }
 
         .user-message .message-content {
             background: #e3f2fd;
@@ -752,7 +980,7 @@
             color: white;
             border: none;
             border-radius: 6px;
-            padding: 6px 10px;
+            padding: 8px 12px;
             font-size: 0.75rem;
             font-weight: 600;
             cursor: pointer;
@@ -761,6 +989,8 @@
             display: flex;
             align-items: center;
             gap: 4px;
+            height: 36px;
+            min-height: 36px;
         }
 
         .reference-btn:hover {
@@ -778,7 +1008,7 @@
             color: white;
             border: none;
             border-radius: 6px;
-            padding: 6px 10px;
+            padding: 8px 12px;
             font-size: 0.75rem;
             font-weight: 600;
             cursor: pointer;
@@ -788,6 +1018,8 @@
             align-items: center;
             gap: 4px;
             position: relative;
+            height: 36px;
+            min-height: 36px;
         }
 
         .developer-mode-btn:hover {
@@ -910,9 +1142,9 @@
                 <div class="sidebar-header">
                     <h3>🤖 모델 선택</h3>
                     <div class="model-selector">
-                        <div class="model-grid" id="modelGrid">
-                            <!-- 모델 카드들이 여기에 동적으로 생성됩니다 -->
-                        </div>
+                                            <div class="model-grid" id="modelGrid">
+                        <!-- 모델 카드들이 여기에 동적으로 생성됩니다 -->
+                    </div>
                     </div>
                 </div>
 
@@ -976,6 +1208,9 @@
                         <button class="reference-btn" id="referenceBtn" onclick="toggleReferencePanel()">
                             📚 RAG
                         </button>
+                        <button class="mcp-btn" id="mcpBtn" onclick="toggleMCPPanel()">
+                            🌐 MCP
+                        </button>
                         <button class="developer-mode-btn" id="developerModeBtn" onclick="toggleDeveloperMode()">
                             🔧 Dev Mode
                         </button>
@@ -1034,6 +1269,59 @@
                 <div class="document-list" id="documentList">
                     <div class="loading">문서 목록을 불러오는 중...</div>
                 </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- MCP 패널 -->
+    <div class="mcp-panel" id="mcpPanel">
+        <div class="mcp-panel-header">
+            <h2>🌐 MCP Services</h2>
+            <button class="mcp-panel-close" onclick="toggleMCPPanel()">✕</button>
+        </div>
+        <div class="mcp-panel-content">
+            <div class="mcp-section">
+                <h3>🌤️ 날씨 정보</h3>
+                <div class="mcp-service">
+                    <input type="text" id="weatherLocation" placeholder="도시명 (예: 서울, 부산)" class="mcp-input">
+                    <button class="mcp-btn-service" onclick="getWeather()">날씨 조회</button>
+                </div>
+                <div class="mcp-result" id="weatherResult"></div>
+            </div>
+
+            <div class="mcp-section">
+                <h3>📈 주식 정보</h3>
+                <div class="mcp-service">
+                    <input type="text" id="stockCode" placeholder="종목명 또는 종목코드 (예: 삼성전자, 005930)" class="mcp-input">
+                    <button class="mcp-btn-service" onclick="getStock()">주식 조회</button>
+                </div>
+                <div class="mcp-result" id="stockResult"></div>
+            </div>
+
+            <div class="mcp-section">
+                <h3>🔍 웹 검색</h3>
+                <div class="mcp-service">
+                    <input type="text" id="searchQuery" placeholder="검색어를 입력하세요" class="mcp-input">
+                    <button class="mcp-btn-service" onclick="webSearch()">검색</button>
+                </div>
+                <div class="mcp-result" id="searchResult"></div>
+            </div>
+
+            <div class="mcp-section">
+                <h3>🔗 통합 서비스</h3>
+                <div class="mcp-service">
+                    <input type="text" id="integratedQuery" placeholder="RAG + MCP 통합 질문" class="mcp-input">
+                    <button class="mcp-btn-service" onclick="integratedQuery()">통합 조회</button>
+                </div>
+                <div class="mcp-result" id="integratedResult"></div>
+            </div>
+
+            <div class="mcp-section">
+                <h3>📊 MCP 상태</h3>
+                <div class="mcp-status" id="mcpStatus">
+                    <div class="loading">MCP 서비스 상태 확인 중...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -1047,7 +1335,7 @@
         <div class="developer-panel-content">
             <div class="developer-section">
                 <h3>📊 시스템 정보</h3>
-                <div class="developer-grid" style="grid-template-columns: repeat(2, 1fr);">
+                <div class="developer-grid" style="grid-template-columns: repeat(3, 1fr);">
                     <div class="developer-card">
                         <h4>서버</h4>
                         <p id="devServerStatus">확인 중...</p>
@@ -1055,6 +1343,10 @@
                     <div class="developer-card">
                         <h4>응답</h4>
                         <p id="devResponseStatus">대기 중</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>AI 모델</h4>
+                        <p id="devAIModel">확인 중...</p>
                     </div>
                 </div>
             </div>
@@ -1122,6 +1414,22 @@
                     </div>
                 </div>
             </div>
+
+            <div class="developer-section">
+                <h3>🗑️ 데이터 관리</h3>
+                <div class="developer-grid">
+                    <div class="developer-card">
+                        <h4>벡터 스토어 초기화</h4>
+                        <p style="font-size: 0.8rem; color: #7f8c8d; margin-bottom: 8px;">모든 벡터 데이터와 업로드된 문서를 삭제합니다.</p>
+                        <p><button onclick="resetAllData()" style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: bold;">🚨 전체 초기화</button></p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>벡터 스토어 상태</h4>
+                        <p id="vectorstoreStatus" style="font-size: 0.8rem; color: #2c3e50;">확인 중...</p>
+                        <p><button onclick="checkVectorstoreStatus()" style="background: #27ae60; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">상태 확인</button></p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1136,30 +1444,43 @@
         let resourceMonitorInterval = null;
         let serverStatusOk = false;
 
-        // 모델 목록
-        const models = [
-            { name: 'gemma3:12b-it-qat', size: '8.9 GB', id: '5d4fa005e7bb' },
-            { name: 'deepseek-v2:16b-lite-chat-q8_0', size: '16 GB', id: '1d62ef756269' },
-            { name: 'qwen3:14b-q8_0', size: '15 GB', id: '304bf7349c71' },
-            { name: 'deepseek-r1:14b', size: '9.0 GB', id: 'c333b7232bdb' },
-            { name: 'llama3.2-vision:11b-instruct-q4_K_M', size: '7.8 GB', id: '6f2f9757ae97' },
-            { name: 'llama3.1:8b', size: '4.9 GB', id: '46e0c10c039e' }
-        ];
+        // 모델 목록 (Ollama에서 동적으로 로드)
+        let models = [];
 
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', async () => {
-            // 개발자 모드 초기화 - 비활성화 상태로 시작
-            developerModeActive = false;
-            serverStatusOk = false;
-            clearDeveloperData();
+            console.log('애플리케이션 초기화 시작...');
             
-            createModelGrid();
-            await loadModels();
-            await loadSessions();
-            startNewChat();
-            
-            // 개발자 모드가 비활성화된 상태이므로 서버 상태 모니터링 시작하지 않음
-            console.log('애플리케이션 초기화 완료 - 개발자 모드 비활성화 상태');
+            try {
+                // 개발자 모드 초기화 - 비활성화 상태로 시작
+                developerModeActive = false;
+                serverStatusOk = false;
+                
+                // Ollama에서 모델 목록 로드
+                console.log('모델 목록 로드 시작...');
+                await loadModels();
+                
+                // 세션 로드
+                console.log('세션 로드 시작...');
+                await loadSessions();
+                
+                // 저장된 세션 ID가 있으면 복원, 없으면 새 세션 생성
+                const savedSessionId = localStorage.getItem('currentSessionId');
+                if (savedSessionId) {
+                    console.log('저장된 세션 ID 복원:', savedSessionId);
+                    currentSessionId = savedSessionId;
+                    updateSessionInfo(`세션: ${currentSessionId}`);
+                } else {
+                    console.log('새 세션 생성 시작...');
+                    await startNewChat();
+                }
+                
+                console.log('초기화 완료 - 선택된 모델:', selectedModel, '현재 세션:', currentSessionId);
+                console.log('애플리케이션 초기화 완료');
+                
+            } catch (error) {
+                console.error('초기화 중 오류 발생:', error);
+            }
         });
 
         // 페이지 언로드 시 정리
@@ -1170,7 +1491,21 @@
 
         // 모델 그리드 생성
         function createModelGrid() {
+            console.log('모델 그리드 생성 시작...');
             const modelGrid = document.getElementById('modelGrid');
+            if (!modelGrid) {
+                console.error('modelGrid 요소를 찾을 수 없습니다!');
+                return;
+            }
+            
+            // 기존 내용 제거
+            modelGrid.innerHTML = '';
+            
+            if (models.length === 0) {
+                console.log('모델 목록이 비어있습니다');
+                return;
+            }
+            
             models.forEach((model, index) => {
                 const card = document.createElement('div');
                 card.className = 'model-card';
@@ -1185,21 +1520,29 @@
                 
                 // 첫 번째 모델을 기본 선택
                 if (index === 0) {
+                    console.log('기본 모델 선택:', model.name);
                     selectModel(model.name, card);
                 }
             });
+            
+            console.log('모델 그리드 생성 완료. 총 카드 수:', modelGrid.children.length);
         }
 
         // 모델 선택
-        function selectModel(modelName, cardElement) {
+        async function selectModel(modelName, cardElement) {
             // 이전 선택 해제
             document.querySelectorAll('.model-card').forEach(card => {
                 card.classList.remove('selected');
             });
             
-                        // 새로 선택
+            // 새로 선택
             cardElement.classList.add('selected');
             selectedModel = modelName;
+            
+            console.log('모델 선택됨:', selectedModel);
+            
+            // 의사결정 서비스 제거됨 - 모델 선택만 로컬에서 처리
+            console.log('모델 선택 완료:', modelName);
             
             // 개발자 모드 로그 추가
             addRequestLog('모델 선택', { model: modelName });
@@ -1213,39 +1556,52 @@
             updateWelcomeMessageModel();
         }
 
-        // 실제 모델 목록 로드
+        // 백엔드를 통해 Ollama 모델 목록 로드
         async function loadModels() {
             try {
+                console.log('모델 목록 로드 시작...');
+                
+                // 백엔드 API를 통해 모델 목록 가져오기
                 const response = await fetch('/api/models');
+                console.log('API 응답 상태:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('백엔드 API 응답:', data);
                 
                 if (data.models && data.models.length > 0) {
-                    const modelGrid = document.getElementById('modelGrid');
-                    modelGrid.innerHTML = '';
+                    // 백엔드에서 받은 모델 목록 사용
+                    models = data.models;
                     
-                    data.models.forEach((model, index) => {
-                        const card = document.createElement('div');
-                        card.className = 'model-card';
-                        card.onclick = () => selectModel(model.name, card);
-                        
-                        card.innerHTML = `
-                            <div class="model-name">${model.name}</div>
-                            <div class="model-size">💾 ${model.size}</div>
-                        `;
-                        
-                        modelGrid.appendChild(card);
-                        
-                        if (index === 0) {
-                            selectModel(model.name, card);
-                        }
-                    });
+                    console.log('로드된 모델 목록:', models);
+                    
+                    // 모델 그리드 생성
+                    createModelGrid();
+                } else {
+                    console.log('사용 가능한 모델이 없습니다');
+                    showModelError(data.error || '모델을 찾을 수 없습니다.');
                 }
             } catch (error) {
-                console.error('모델 목록을 가져올 수 없습니다:', error);
-                // 에러 시 기본 모델 선택
-                if (models.length > 0) {
-                    selectedModel = models[0].name;
-                }
+                console.error('모델 목록 로드 중 오류:', error);
+                showModelError(`모델 목록을 가져올 수 없습니다: ${error.message}`);
+            }
+        }
+        
+        // 모델 크기 포맷팅 함수 제거됨 (백엔드에서 처리)
+        
+        // 모델 로드 에러 표시
+        function showModelError(message) {
+            const modelGrid = document.getElementById('modelGrid');
+            if (modelGrid) {
+                modelGrid.innerHTML = `
+                    <div style="color: #e74c3c; padding: 15px; text-align: center; border: 1px solid #e74c3c; border-radius: 8px; background: #fdf2f2;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">⚠️ 모델 로드 실패</div>
+                        <div style="font-size: 0.9rem;">${message}</div>
+                    </div>
+                `;
             }
         }
 
@@ -1322,8 +1678,10 @@
             }
             
             try {
+                console.log('리소스 정보 요청 중...');
                 const response = await fetch('/api/system/resources');
                 const data = await response.json();
+                console.log('리소스 정보 수신:', data);
                 
                 if (data.error) {
                     console.error('리소스 정보 수집 실패:', data.error);
@@ -1338,12 +1696,22 @@
                     `${data.ram.used_gb} GB / ${data.ram.total_gb} GB (${data.ram.percent}%)`;
                 
                 // GPU 사용량 (최대 2개)
+                console.log('GPU 정보 처리 중:', data.gpu);
                 if (data.gpu && data.gpu.length > 0) {
-                    document.getElementById('devGpu1Usage').textContent = `${data.gpu[0].utilization}%`;
-                    if (data.gpu.length > 1) {
-                        document.getElementById('devGpu2Usage').textContent = `${data.gpu[1].utilization}%`;
-                    } else {
+                    const gpu1 = data.gpu[0];
+                    console.log('GPU 1 정보:', gpu1);
+                    if (gpu1.name === "GPU 사용 불가" || gpu1.name === "GPU 없음") {
+                        document.getElementById('devGpu1Usage').textContent = '사용 불가';
                         document.getElementById('devGpu2Usage').textContent = 'N/A';
+                    } else {
+                        document.getElementById('devGpu1Usage').textContent = `${gpu1.utilization}%`;
+                        if (data.gpu.length > 1) {
+                            const gpu2 = data.gpu[1];
+                            console.log('GPU 2 정보:', gpu2);
+                            document.getElementById('devGpu2Usage').textContent = `${gpu2.utilization}%`;
+                        } else {
+                            document.getElementById('devGpu2Usage').textContent = 'N/A';
+                        }
                     }
                 } else {
                     document.getElementById('devGpu1Usage').textContent = 'N/A';
@@ -1351,17 +1719,25 @@
                 }
                 
                 // VRAM 사용량 (최대 2개)
+                console.log('VRAM 정보 처리 중:', data.vram);
                 if (data.vram && data.vram.length > 0) {
                     const vram1 = data.vram[0];
-                    document.getElementById('devVram1Usage').textContent = 
-                        `${vram1.used_mb} MB / ${vram1.total_mb} MB (${vram1.percent}%)`;
-                    
-                    if (data.vram.length > 1) {
-                        const vram2 = data.vram[1];
-                        document.getElementById('devVram2Usage').textContent = 
-                            `${vram2.used_mb} MB / ${vram2.total_mb} MB (${vram2.percent}%)`;
-                    } else {
+                    console.log('VRAM 1 정보:', vram1);
+                    if (vram1.total_mb === 0) {
+                        document.getElementById('devVram1Usage').textContent = '사용 불가';
                         document.getElementById('devVram2Usage').textContent = 'N/A';
+                    } else {
+                        document.getElementById('devVram1Usage').textContent = 
+                            `${vram1.used_mb} MB / ${vram1.total_mb} MB (${vram1.percent}%)`;
+                        
+                        if (data.vram.length > 1) {
+                            const vram2 = data.vram[1];
+                            console.log('VRAM 2 정보:', vram2);
+                            document.getElementById('devVram2Usage').textContent = 
+                                `${vram2.used_mb} MB / ${vram2.total_mb} MB (${vram2.percent}%)`;
+                        } else {
+                            document.getElementById('devVram2Usage').textContent = 'N/A';
+                        }
                     }
                 } else {
                     document.getElementById('devVram1Usage').textContent = 'N/A';
@@ -1385,20 +1761,11 @@
                 return;
             }
             
-            const shouldMonitor = serverStatusOk;
-            
-            if (shouldMonitor) {
-                // 리소스 모니터링 시작
-                if (!resourceMonitorInterval) {
-                    updateResourceUsage(); // 즉시 첫 번째 업데이트
-                    resourceMonitorInterval = setInterval(updateResourceUsage, 2000); // 2초마다
-                }
-            } else {
-                // 리소스 모니터링 중지
-                if (resourceMonitorInterval) {
-                    clearInterval(resourceMonitorInterval);
-                    resourceMonitorInterval = null;
-                }
+            // 개발자 모드가 활성화되면 서버 상태와 관계없이 리소스 모니터링 시작
+            if (!resourceMonitorInterval) {
+                console.log('리소스 모니터링 시작');
+                updateResourceUsage(); // 즉시 첫 번째 업데이트
+                resourceMonitorInterval = setInterval(updateResourceUsage, 2000); // 2초마다
             }
         }
 
@@ -1413,6 +1780,7 @@
         // 새 대화 시작
         async function startNewChat() {
             try {
+                console.log('세션 생성 API 호출 시작...');
                 const response = await fetch('/api/sessions', {
                     method: 'POST',
                     headers: {
@@ -1420,11 +1788,31 @@
                     }
                 });
                 
+                console.log('API 응답 상태:', response.status, response.statusText);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API 응답 오류:', errorText);
+                    throw new Error(`세션 생성 실패: ${response.status} - ${errorText}`);
+                }
+                
                 const data = await response.json();
-                currentSessionId = data.id;
+                console.log('API 응답 데이터:', data);
+                
+                if (!data.session_id) {
+                    console.error('응답에 session_id가 없음:', data);
+                    throw new Error('세션 ID가 응답에 없습니다');
+                }
+                
+                currentSessionId = data.session_id;
+                console.log('새 세션 생성됨:', currentSessionId);
+                // 로컬 스토리지에 세션 ID 저장
+                localStorage.setItem('currentSessionId', currentSessionId);
                 
                 // UI 업데이트
                 updateSessionInfo(`세션: ${currentSessionId}`);
+                
+                // 새 세션이므로 채팅 메시지 영역 지우기
                 clearChatMessages();
                 
                 // 환영 메시지 표시
@@ -1441,8 +1829,12 @@
                 // 개발자 모드 로그 추가
                 addRequestLog('새 대화 시작', { sessionId: currentSessionId });
                 
+                return true; // 성공 시 true 반환
+                
             } catch (error) {
                 console.error('새 대화 시작 실패:', error);
+                updateSessionInfo(`세션 생성 실패: ${error.message}`);
+                return false; // 실패 시 false 반환
             }
         }
 
@@ -1453,6 +1845,8 @@
                     await fetch(`/api/sessions/${currentSessionId}`, {
                         method: 'DELETE'
                     });
+                    // 로컬 스토리지에서 세션 ID 제거
+                    localStorage.removeItem('currentSessionId');
                     await startNewChat();
                 } catch (error) {
                     console.error('대화 삭제 실패:', error);
@@ -1554,6 +1948,8 @@
                 if (response.ok) {
                     currentSessionId = sessionId;
                     updateSessionInfo(`세션: ${sessionId}`);
+                    // 로컬 스토리지에 세션 ID 저장
+                    localStorage.setItem('currentSessionId', sessionId);
                     
                     // 채팅 메시지 영역 지우기
                     const chatMessages = document.getElementById('chatMessages');
@@ -1608,25 +2004,45 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        // AI 응답에서 링크 처리
+        // AI 응답에서 링크 처리 및 Markdown 변환
         function processLinksInResponse(content) {
             // 이미 HTML 링크가 있는 경우 그대로 반환
             if (content.includes('<a href=')) {
                 return content;
             }
             
+            let processedContent = content;
+            
+            // Markdown 변환
+            processedContent = convertMarkdownToHtml(processedContent);
+            
             // 중복된 URL 제거 (같은 URL이 연속으로 나오는 경우)
             const urlPattern = /(https?:\/\/[^\s]+)/g;
             const urls = content.match(urlPattern) || [];
             const uniqueUrls = [...new Set(urls)];
             
-            let processedContent = content;
-            
             // 각 고유 URL에 대해 처리
             uniqueUrls.forEach(url => {
                 const linkText = url.replace('https://', '').replace('http://', '');
-                const displayText = linkText.length > 50 ? linkText.substring(0, 47) + '...' : linkText;
-                const linkHtml = `<a href="${url}" target="_blank" style="color: #3498db; text-decoration: underline; cursor: pointer;">${displayText}</a>`;
+                
+                // URL 표시 방식 개선: 도메인과 경로를 분리하여 표시
+                let displayText = linkText;
+                if (linkText.length > 80) {
+                    const domainEnd = linkText.indexOf('/', 0);
+                    if (domainEnd > 0) {
+                        const domain = linkText.substring(0, domainEnd);
+                        const path = linkText.substring(domainEnd);
+                        if (path.length > 50) {
+                            displayText = `${domain}${path.substring(0, 47)}...`;
+                        } else {
+                            displayText = linkText;
+                        }
+                    } else {
+                        displayText = linkText.length > 80 ? linkText.substring(0, 77) + '...' : linkText;
+                    }
+                }
+                
+                const linkHtml = `<a href="${url}" target="_blank" style="color: #3498db; text-decoration: underline; cursor: pointer; word-break: break-all;" title="${url}">${displayText}</a>`;
                 
                 // 모든 동일한 URL을 클릭 가능한 링크로 교체
                 const urlRegex = new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
@@ -1634,6 +2050,26 @@
             });
             
             return processedContent;
+        }
+        
+        // Markdown을 HTML로 변환하는 함수
+        function convertMarkdownToHtml(text) {
+            // 볼드 텍스트 (**text** -> <strong>text</strong>)
+            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // 이탤릭 텍스트 (*text* -> <em>text</em>)
+            text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            // 코드 블록 (```text``` -> <code>text</code>)
+            text = text.replace(/```(.*?)```/gs, '<code>$1</code>');
+            
+            // 인라인 코드 (`text` -> <code>text</code>)
+            text = text.replace(/`(.*?)`/g, '<code>$1</code>');
+            
+            // 줄바꿈은 CSS white-space: pre-wrap으로 처리되므로 변환하지 않음
+            // text = text.replace(/\n/g, '<br>');
+            
+            return text;
         }
 
 
@@ -1651,12 +2087,38 @@
             const chatInput = document.getElementById('chatInput');
             const message = chatInput.value.trim();
             
-            if (!message || !selectedModel || isGenerating) {
+            console.log('sendMessage 호출됨:', { message, selectedModel, isGenerating });
+            
+            if (!message) {
+                console.log('메시지가 비어있음');
+                return;
+            }
+            
+            if (!selectedModel) {
+                console.log('모델이 선택되지 않음');
+                alert('모델을 선택해주세요.');
+                return;
+            }
+            
+            if (isGenerating) {
+                console.log('이미 응답 생성 중');
                 return;
             }
 
+            // 세션이 없으면 새 세션 생성
             if (!currentSessionId) {
-                await startNewChat();
+                console.log('세션이 없어 새 세션을 생성합니다...');
+                const sessionCreated = await startNewChat();
+                if (!sessionCreated || !currentSessionId) {
+                    console.error('세션 생성 실패');
+                    alert('세션 생성에 실패했습니다. 페이지를 새로고침하고 다시 시도해주세요.');
+                    isGenerating = false;
+                    updateSendButton(false);
+                    return;
+                }
+                console.log('세션 생성 완료:', currentSessionId);
+            } else {
+                console.log('기존 세션 사용:', currentSessionId);
             }
             
             // UI 업데이트
@@ -1686,58 +2148,7 @@
             showTypingIndicator(true);
 
             try {
-                // 1단계: 의사결정 서비스로 메시지 분류
-                const decisionResponse = await fetch('/api/decision/classify', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        prompt: message,
-                        use_async: true
-                    })
-                });
-
-                let decisionResult = "바로 답변드리겠습니다"; // 기본값
-                if (decisionResponse.ok) {
-                    const decisionData = await decisionResponse.json();
-                    decisionResult = decisionData.decision_result;
-                    
-                    // 개발자 모드에서 의사결정 결과 로그
-                    if (developerModeActive) {
-                        addRequestLog('의사결정 결과', {
-                            original_message: message,
-                            decision_result: decisionResult,
-                            success: decisionData.success
-                        });
-                    }
-                }
-
-                // 2단계: 의사결정 결과에 따른 처리
-                if (decisionResult === "날씨 정보를 요청하셨습니다.") {
-                    // 날씨 정보 요청 처리
-                    showTypingIndicator(false);
-                    addMessage('assistant', `🌤️ ${decisionResult}\n\n죄송합니다. 현재 날씨 정보 서비스가 준비 중입니다. 곧 제공될 예정입니다.`, null, selectedModel);
-                    isGenerating = false;
-                    updateSendButton(false);
-                    return;
-                } else if (decisionResult === "한국 주식 시장에 상장되어 있는 종목의 주가 관련 정보를 요청하셨습니다.") {
-                    // 주식 정보 요청 처리
-                    showTypingIndicator(false);
-                    addMessage('assistant', `📈 ${decisionResult}\n\n죄송합니다. 현재 주식 정보 서비스가 준비 중입니다. 곧 제공될 예정입니다.`, null, selectedModel);
-                    isGenerating = false;
-                    updateSendButton(false);
-                    return;
-                } else if (decisionResult === "정확한 답변을 위해서는 웹 검색이 필요합니다.") {
-                    // 웹 검색 필요 처리
-                    showTypingIndicator(false);
-                    addMessage('assistant', `🔍 ${decisionResult}\n\n죄송합니다. 현재 웹 검색 서비스가 준비 중입니다. 곧 제공될 예정입니다.`, null, selectedModel);
-                    isGenerating = false;
-                    updateSendButton(false);
-                    return;
-                }
-
-                // 3단계: 바로 답변 가능한 경우 Ollama 모델로 처리
+                // 기본 채팅 API 호출
                 const params = {
                     session_id: currentSessionId,
                     model: selectedModel,
@@ -1807,6 +2218,8 @@
                                 if (data.session_id && data.session_id !== currentSessionId) {
                                     currentSessionId = data.session_id;
                                     updateSessionInfo(`세션: ${currentSessionId}`);
+                                    // 로컬 스토리지에 세션 ID 저장
+                                    localStorage.setItem('currentSessionId', currentSessionId);
                                 }
                                 
                             } catch (e) {
@@ -1920,7 +2333,12 @@
             const sessionInfo = document.getElementById('sessionInfo');
             const sessionInfoText = sessionInfo.querySelector('.session-info-text');
             if (sessionInfoText) {
-                sessionInfoText.textContent = text;
+                // undefined나 null 값 방지
+                if (!text || text === 'undefined' || text === 'null') {
+                    sessionInfoText.textContent = '새로운 대화를 시작하세요';
+                } else {
+                    sessionInfoText.textContent = text;
+                }
             }
         }
 
@@ -1941,6 +2359,23 @@
             }
         }
 
+        // MCP 패널 토글
+        function toggleMCPPanel() {
+            const btn = document.getElementById('mcpBtn');
+            const panel = document.getElementById('mcpPanel');
+            
+            if (panel.classList.contains('active')) {
+                btn.classList.remove('active');
+                panel.classList.remove('active');
+                console.log('MCP 패널 비활성화');
+            } else {
+                btn.classList.add('active');
+                panel.classList.add('active');
+                loadMCPStatus();
+                console.log('MCP 패널 활성화');
+            }
+        }
+
         // 개발자 모드 토글
         function toggleDeveloperMode() {
             const btn = document.getElementById('developerModeBtn');
@@ -1957,10 +2392,20 @@
                 updateDeveloperPanel();
                 loadSettingsInfo();
                 
+                // 벡터 스토어 상태 확인
+                checkVectorstoreStatus();
+                
+                // AI 모델 정보 확인
+                updateAIModelInfo();
+                
                 // 서버 상태 모니터링 시작
                 startServerStatusMonitoring();
                 // 리소스 모니터링 시작
                 updateResourceMonitoring();
+                // 즉시 리소스 정보 업데이트
+                setTimeout(() => {
+                    updateResourceUsage();
+                }, 100);
                 console.log('개발자 모드 활성화');
             } else {
                 btn.classList.remove('active');
@@ -2002,10 +2447,17 @@
             
             // 설정 정보 초기화
             document.getElementById('devSettingsInfo').textContent = '설정 정보를 불러오는 중...';
+            
+            // 벡터 스토어 상태 초기화
+            document.getElementById('vectorstoreStatus').textContent = '확인 중...';
+            
+            // AI 모델 상태 초기화
+            document.getElementById('devAIModel').textContent = '확인 중...';
+            document.getElementById('devAIModel').style.color = '';
         }
 
         // 개발자 패널 정보 업데이트
-        function updateDeveloperPanel() {
+        async function updateDeveloperPanel() {
             // 개발자 모드가 비활성화된 경우 업데이트하지 않음
             if (!developerModeActive) {
                 return;
@@ -2014,11 +2466,49 @@
             // 응답 상태 업데이트
             document.getElementById('devResponseStatus').textContent = isGenerating ? '응답 생성 중...' : '대기 중';
             
+            // AI 모델 정보 업데이트
+            await updateAIModelInfo();
+            
             // 리소스 모니터링 상태 업데이트
             updateResourceMonitoring();
             
             // 문서 처리 상태 업데이트
             updateDocumentProcessingStatus();
+        }
+        
+        // AI 모델 정보 업데이트
+        async function updateAIModelInfo() {
+            const modelInfoElement = document.getElementById('devAIModel');
+            if (!modelInfoElement) {
+                return;
+            }
+            
+            if (selectedModel) {
+                // 현재 선택된 모델 정보 표시
+                let statusText = `${selectedModel}\n`;
+                statusText += `상태: 선택됨`;
+                
+                modelInfoElement.textContent = statusText;
+                modelInfoElement.style.color = '#27ae60'; // 녹색
+            } else {
+                // 모델이 선택되지 않은 경우
+                modelInfoElement.textContent = '모델을 선택해주세요';
+                modelInfoElement.style.color = '#f39c12'; // 주황색
+            }
+        }
+
+        // 모델 상태 텍스트 변환
+        function getModelStatusText(status) {
+            switch (status) {
+                case 'loaded':
+                    return '로드됨';
+                case 'not_loaded':
+                    return '미로드';
+                case 'unknown':
+                    return '알 수 없음';
+                default:
+                    return status.startsWith('error:') ? '오류' : status;
+            }
         }
 
         // 문서 처리 상태 업데이트
@@ -2079,6 +2569,100 @@
         function clearRequestLog() {
             requestLog = [];
             updateRequestLogDisplay();
+        }
+
+        // 벡터 스토어 상태 확인
+        async function checkVectorstoreStatus() {
+            // 개발자 모드가 비활성화된 경우 확인하지 않음
+            if (!developerModeActive) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/documents/dev/vectorstore-status');
+                const data = await response.json();
+                
+                const statusElement = document.getElementById('vectorstoreStatus');
+                let statusText = `상태: ${data.vectorstore_status}\n`;
+                statusText += `문서 수: ${data.document_count}개\n`;
+                statusText += `업로드된 파일: ${data.uploaded_files_count}개`;
+                
+                if (data.uploaded_files_count > 0) {
+                    statusText += '\n\n업로드된 파일 목록:';
+                    data.uploaded_files.forEach(file => {
+                        statusText += `\n- ${file.filename} (${file.size_mb}MB)`;
+                    });
+                }
+                
+                statusElement.textContent = statusText;
+                addRequestLog('벡터 스토어 상태 확인', data);
+            } catch (error) {
+                const statusElement = document.getElementById('vectorstoreStatus');
+                statusElement.textContent = `상태 확인 실패: ${error.message}`;
+                addRequestLog('벡터 스토어 상태 확인 실패', error.message);
+            }
+        }
+
+        // 전체 데이터 초기화
+        async function resetAllData() {
+            // 개발자 모드가 비활성화된 경우 실행하지 않음
+            if (!developerModeActive) {
+                alert('개발자 모드에서만 사용할 수 있는 기능입니다.');
+                return;
+            }
+            
+            // 확인 대화상자
+            const confirmMessage = `🚨 전체 데이터 초기화를 진행하시겠습니까?\n\n` +
+                `이 작업은 다음을 모두 삭제합니다:\n` +
+                `• 모든 업로드된 문서 파일\n` +
+                `• 벡터 스토어의 모든 데이터\n` +
+                `• Chroma 캐시 데이터\n` +
+                `• 처리 중인 문서 목록\n\n` +
+                `⚠️ 이 작업은 되돌릴 수 없습니다!`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/documents/dev/reset-all', {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    
+                    let message = '✅ 전체 데이터 초기화가 완료되었습니다!\n\n';
+                    message += `삭제된 파일: ${result.deleted_files_count}개\n`;
+                    message += `삭제된 벡터 문서: ${result.deleted_vector_documents}개\n`;
+                    message += `캐시 삭제: ${result.cache_deleted ? '성공' : '실패'}\n`;
+                    message += `벡터스토어 재초기화: ${result.vectorstore_reinitialized ? '성공' : '실패'}`;
+                    
+                    if (result.deleted_files && result.deleted_files.length > 0) {
+                        message += '\n\n삭제된 파일 목록:';
+                        result.deleted_files.forEach(filename => {
+                            message += `\n- ${filename}`;
+                        });
+                    }
+                    
+                    alert(message);
+                    
+                    // 벡터 스토어 상태 업데이트
+                    await checkVectorstoreStatus();
+                    
+                    // 문서 목록 새로고침
+                    loadDocuments();
+                    
+                    addRequestLog('전체 데이터 초기화 완료', result);
+                } else {
+                    const error = await response.json();
+                    alert('초기화에 실패했습니다: ' + error.detail);
+                    addRequestLog('전체 데이터 초기화 실패', error.detail);
+                }
+            } catch (error) {
+                alert('초기화 중 오류가 발생했습니다: ' + error.message);
+                addRequestLog('전체 데이터 초기화 오류', error.message);
+            }
         }
 
         // 설정 정보 로드
@@ -2175,6 +2759,29 @@
                     
                     documentList.innerHTML = documentsHtml;
                 }
+                
+                // 문서 목록 로드 후 처리 상태 확인하여 업로드 버튼 상태 업데이트
+                setTimeout(async () => {
+                    try {
+                        const [queueStatus, processingDocs] = await Promise.all([
+                            checkProcessingStatus(),
+                            checkProcessingDocuments()
+                        ]);
+                        
+                        const hasProcessingDocuments = (queueStatus && queueStatus.queue_size > 0) || 
+                                                      Object.keys(processingDocs).length > 0;
+                        
+                        updateUploadButtonState(hasProcessingDocuments);
+                        
+                        // 처리 중인 문서가 있으면 상태 표시 추가
+                        if (hasProcessingDocuments) {
+                            updateProcessingStatusDisplay(queueStatus, processingDocs);
+                        }
+                    } catch (error) {
+                        console.error('처리 상태 확인 실패:', error);
+                    }
+                }, 100);
+                
             } catch (error) {
                 documentList.innerHTML = `
                     <div class="loading" style="color: #e74c3c;">
@@ -2219,7 +2826,7 @@
 
         // 문서 삭제
         async function deleteDocument(filename) {
-            if (!confirm(`"${filename}" 파일을 삭제하시겠습니까?`)) {
+            if (!confirm(`"${filename}" 파일을 삭제하시겠습니까?\n\n이 작업은 파일과 벡터스토어에서 모두 삭제됩니다.`)) {
                 return;
             }
             
@@ -2229,11 +2836,27 @@
                 });
                 
                 if (response.ok) {
-                    alert('문서가 성공적으로 삭제되었습니다.');
+                    const result = await response.json();
+                    let message = '문서가 성공적으로 삭제되었습니다.';
+                    
+                    if (result.deleted_vector_chunks > 0) {
+                        message += `\n\n벡터스토어에서 ${result.deleted_vector_chunks}개 청크가 삭제되었습니다.`;
+                    } else {
+                        message += '\n\n벡터스토어에서 해당 문서를 찾을 수 없었습니다.';
+                    }
+                    
+                    alert(message);
                     loadDocuments(); // 목록 새로고침
                 } else {
                     const error = await response.json();
-                    alert('삭제에 실패했습니다: ' + error.detail);
+                    let errorMessage = '삭제에 실패했습니다: ' + error.detail;
+                    
+                    // 벡터스토어 삭제 실패인 경우 더 명확한 메시지
+                    if (error.detail && error.detail.includes('벡터스토어에서 문서 삭제에 실패')) {
+                        errorMessage = '벡터스토어 삭제에 실패했습니다.\n\n파일은 삭제되지 않았으므로 다시 시도해주세요.';
+                    }
+                    
+                    alert(errorMessage);
                 }
             } catch (error) {
                 alert('삭제 중 오류가 발생했습니다: ' + error.message);
@@ -2241,13 +2864,181 @@
             }
         }
 
+
+
         // 파일 업로드 이벤트 리스너 설정
         document.addEventListener('DOMContentLoaded', () => {
             const fileInput = document.getElementById('documentUpload');
             if (fileInput) {
                 fileInput.addEventListener('change', handleFileUpload);
             }
+            
+            // 초기 상태 확인 (처리 중인 문서가 있는지 확인)
+            checkInitialProcessingStatus();
         });
+
+        // MCP 서비스 관련 함수들
+        async function getWeather() {
+            const location = document.getElementById('weatherLocation').value.trim();
+            if (!location) {
+                alert('도시명을 입력해주세요.');
+                return;
+            }
+
+            const resultDiv = document.getElementById('weatherResult');
+            resultDiv.innerHTML = '🌤️ 날씨 정보를 가져오는 중...';
+
+            try {
+                const response = await fetch('/api/chat/mcp/weather', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: `${location} 날씨`,
+                        model: currentModel,
+                        session_id: currentSessionId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = data.response;
+                } else {
+                    resultDiv.innerHTML = `❌ 오류: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ 네트워크 오류: ${error.message}`;
+            }
+        }
+
+        async function getStock() {
+            const stockCode = document.getElementById('stockCode').value.trim();
+            if (!stockCode) {
+                alert('종목명 또는 종목코드를 입력해주세요.');
+                return;
+            }
+
+            const resultDiv = document.getElementById('stockResult');
+            resultDiv.innerHTML = '📈 주식 정보를 가져오는 중...';
+
+            try {
+                const response = await fetch('/api/chat/mcp/stock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: `${stockCode} 주가`,
+                        model: currentModel,
+                        session_id: currentSessionId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = data.response;
+                } else {
+                    resultDiv.innerHTML = `❌ 오류: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ 네트워크 오류: ${error.message}`;
+            }
+        }
+
+        async function webSearch() {
+            const query = document.getElementById('searchQuery').value.trim();
+            if (!query) {
+                alert('검색어를 입력해주세요.');
+                return;
+            }
+
+            const resultDiv = document.getElementById('searchResult');
+            resultDiv.innerHTML = '🔍 검색 중...';
+
+            try {
+                const response = await fetch('/api/chat/mcp/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: query,
+                        model: currentModel,
+                        session_id: currentSessionId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = data.response;
+                } else {
+                    resultDiv.innerHTML = `❌ 오류: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ 네트워크 오류: ${error.message}`;
+            }
+        }
+
+        async function integratedQuery() {
+            const query = document.getElementById('integratedQuery').value.trim();
+            if (!query) {
+                alert('질문을 입력해주세요.');
+                return;
+            }
+
+            const resultDiv = document.getElementById('integratedResult');
+            resultDiv.innerHTML = '🔗 RAG + MCP 통합 조회 중...';
+
+            try {
+                const response = await fetch('/api/chat/mcp/integrated', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: query,
+                        model: currentModel,
+                        session_id: currentSessionId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    resultDiv.innerHTML = data.response;
+                } else {
+                    resultDiv.innerHTML = `❌ 오류: ${data.error}`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `❌ 네트워크 오류: ${error.message}`;
+            }
+        }
+
+        async function loadMCPStatus() {
+            const statusDiv = document.getElementById('mcpStatus');
+            statusDiv.innerHTML = '📊 MCP 서비스 상태 확인 중...';
+
+            try {
+                const response = await fetch('/api/chat/mcp/status');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    const mcpInfo = data.mcp_service;
+                    statusDiv.innerHTML = `
+                        <strong>MCP 서비스 상태:</strong> ${mcpInfo.status}<br>
+                        <strong>서버 URL:</strong> ${mcpInfo.server_url}<br>
+                        <strong>모델명:</strong> ${mcpInfo.model_name}<br>
+                        <strong>타임아웃:</strong> ${mcpInfo.timeout}초<br>
+                        <strong>최대 재시도:</strong> ${mcpInfo.max_retries}회<br>
+                        <strong>활성 세션:</strong> ${mcpInfo.active_sessions}개
+                    `;
+                } else {
+                    statusDiv.innerHTML = `❌ MCP 서비스 상태 확인 실패: ${data.error}`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `❌ 네트워크 오류: ${error.message}`;
+            }
+        }
 
         // 파일 업로드 처리
         async function handleFileUpload(event) {
@@ -2290,6 +3081,8 @@
                         alert('문서가 업로드되었고 처리 중입니다. 처리 완료까지 잠시 기다려주세요.');
                         // 처리 상태 모니터링 시작
                         monitorDocumentProcessing(result.filename);
+                        // 폴링 시작
+                        startProcessingStatusCheck();
                     } else {
                         alert('문서가 성공적으로 업로드되었습니다.');
                     }
@@ -2318,36 +3111,68 @@
 
         // 문서 처리 상태 모니터링
         async function monitorDocumentProcessing(filename) {
-            const maxAttempts = 60; // 최대 5분 대기 (5초마다 체크)
+            const maxAttempts = 120; // 최대 10분 대기 (5초마다 체크)
             let attempts = 0;
             let isMonitoring = true;
+            let lastKnownStatus = null;
             
             const checkStatus = async () => {
                 if (!isMonitoring) return;
                 
                 try {
-                    const response = await fetch('/api/documents/processing-documents');
-                    const data = await response.json();
+                    // 새로운 문서 상태 확인 API 사용
+                    const statusResponse = await fetch(`/api/documents/check-document-status/${encodeURIComponent(filename)}`);
+                    const statusData = await statusResponse.json();
                     
-                    const documentStatus = data.processing_documents[filename];
-                    if (documentStatus) {
-                        if (documentStatus.status === 'completed') {
-                            alert(`문서 "${filename}" 처리가 완료되었습니다!`);
-                            loadDocuments(); // 목록 새로고침
-                            isMonitoring = false;
-                            return;
-                        } else if (documentStatus.status === 'failed') {
-                            alert(`문서 "${filename}" 처리에 실패했습니다: ${documentStatus.error}`);
-                            loadDocuments(); // 목록 새로고침
-                            isMonitoring = false;
-                            return;
-                        }
-                    } else {
-                        // 문서가 처리 목록에서 사라졌다면 완료된 것으로 간주
+                    if (statusData.status === 'completed') {
                         alert(`문서 "${filename}" 처리가 완료되었습니다!`);
                         loadDocuments(); // 목록 새로고침
                         isMonitoring = false;
                         return;
+                    } else if (statusData.status === 'processing') {
+                        // 처리 중인 상태
+                        const processingStatus = statusData.processing_status;
+                        lastKnownStatus = processingStatus.status;
+                        
+                        if (processingStatus.final_status === 'completed') {
+                            alert(`문서 "${filename}" 처리가 완료되었습니다!`);
+                            loadDocuments(); // 목록 새로고침
+                            isMonitoring = false;
+                            return;
+                        } else if (processingStatus.final_status === 'failed') {
+                            alert(`문서 "${filename}" 처리에 실패했습니다: ${processingStatus.error}`);
+                            loadDocuments(); // 목록 새로고침
+                            isMonitoring = false;
+                            return;
+                        } else if (processingStatus.status === 'completed') {
+                            alert(`문서 "${filename}" 처리가 완료되었습니다!`);
+                            loadDocuments(); // 목록 새로고침
+                            isMonitoring = false;
+                            return;
+                        } else if (processingStatus.status === 'failed') {
+                            alert(`문서 "${filename}" 처리에 실패했습니다: ${processingStatus.error}`);
+                            loadDocuments(); // 목록 새로고침
+                            isMonitoring = false;
+                            return;
+                        }
+                        // 아직 처리 중인 상태
+                    } else if (statusData.status === 'file_exists') {
+                        // 파일은 있지만 벡터 저장소에 없음 - 아직 처리 중
+                        console.log(`문서 "${filename}" 파일은 존재하지만 아직 처리 중입니다.`);
+                    } else if (statusData.status === 'not_found') {
+                        // 문서를 찾을 수 없음 - 처리 실패 가능성
+                        if (lastKnownStatus === 'completed' || lastKnownStatus === 'failed') {
+                            if (lastKnownStatus === 'completed') {
+                                alert(`문서 "${filename}" 처리가 완료되었습니다!`);
+                            } else {
+                                alert(`문서 "${filename}" 처리에 실패했습니다.`);
+                            }
+                            loadDocuments(); // 목록 새로고침
+                            isMonitoring = false;
+                            return;
+                        } else {
+                            console.log(`문서 "${filename}" 처리 상태 불명확 - 계속 모니터링`);
+                        }
                     }
                     
                     attempts++;
@@ -2395,6 +3220,164 @@
             }
         }
 
+        // 처리 중인 문서 확인 함수
+        async function checkProcessingDocuments() {
+            try {
+                const response = await fetch('/api/documents/processing-documents');
+                const data = await response.json();
+                return data.processing_documents || {};
+            } catch (error) {
+                console.error('처리 중인 문서 확인 실패:', error);
+                return {};
+            }
+        }
+
+        // 업로드 버튼 상태 관리
+        function updateUploadButtonState(isProcessing) {
+            const uploadBtn = document.querySelector('.upload-btn');
+            const fileInput = document.getElementById('documentUpload');
+            
+            if (isProcessing) {
+                uploadBtn.textContent = '📤 처리 중 - 업로드 불가';
+                uploadBtn.disabled = true;
+                fileInput.disabled = true;
+                
+                // 툴팁 추가
+                uploadBtn.title = '문서가 처리 중입니다. 완료 후 업로드가 가능합니다.';
+            } else {
+                uploadBtn.textContent = '📤 문서 업로드';
+                uploadBtn.disabled = false;
+                fileInput.disabled = false;
+                uploadBtn.title = '';
+            }
+        }
+
+        // 처리 상태 주기적 확인
+        let processingStatusInterval;
+        let isPollingActive = false;
+        
+        function startProcessingStatusCheck() {
+            // 기존 인터벌 정리
+            if (processingStatusInterval) {
+                clearInterval(processingStatusInterval);
+            }
+            
+            isPollingActive = true;
+            
+            // 3초마다 처리 상태 확인
+            processingStatusInterval = setInterval(async () => {
+                if (!isPollingActive) {
+                    clearInterval(processingStatusInterval);
+                    return;
+                }
+                
+                try {
+                    const [queueStatus, processingDocs] = await Promise.all([
+                        checkProcessingStatus(),
+                        checkProcessingDocuments()
+                    ]);
+                    
+                    // 큐에 대기 중인 문서가 있거나 처리 중인 문서가 있는지 확인
+                    const hasProcessingDocuments = (queueStatus && queueStatus.queue_size > 0) || 
+                                                  Object.keys(processingDocs).length > 0;
+                    
+                    updateUploadButtonState(hasProcessingDocuments);
+                    
+                    // 처리 상태 표시 업데이트 (있으면 표시, 없으면 제거)
+                    updateProcessingStatusDisplay(queueStatus, processingDocs);
+                    
+                    // 처리 중인 문서가 없으면 폴링 중지
+                    if (!hasProcessingDocuments) {
+                        console.log('처리 중인 문서가 없어 폴링을 중지합니다.');
+                        isPollingActive = false;
+                        clearInterval(processingStatusInterval);
+                    }
+                    
+                } catch (error) {
+                    console.error('처리 상태 확인 중 오류:', error);
+                }
+            }, 3000);
+        }
+        
+        function stopProcessingStatusCheck() {
+            isPollingActive = false;
+            if (processingStatusInterval) {
+                clearInterval(processingStatusInterval);
+            }
+        }
+        
+        // 초기 상태 확인 함수
+        async function checkInitialProcessingStatus() {
+            try {
+                const [queueStatus, processingDocs] = await Promise.all([
+                    checkProcessingStatus(),
+                    checkProcessingDocuments()
+                ]);
+                
+                // 처리 중인 문서가 있으면 폴링 시작
+                const hasProcessingDocuments = (queueStatus && queueStatus.queue_size > 0) || 
+                                              Object.keys(processingDocs).length > 0;
+                
+                if (hasProcessingDocuments) {
+                    console.log('처리 중인 문서가 발견되어 폴링을 시작합니다.');
+                    startProcessingStatusCheck();
+                } else {
+                    console.log('처리 중인 문서가 없어 폴링을 시작하지 않습니다.');
+                }
+                
+            } catch (error) {
+                console.error('초기 상태 확인 중 오류:', error);
+            }
+        }
+
+        // 처리 상태 표시 업데이트
+        function updateProcessingStatusDisplay(queueStatus, processingDocs) {
+            const documentList = document.getElementById('documentList');
+            if (!documentList) return;
+            
+            // 기존 처리 상태 표시 제거
+            const existingStatus = documentList.querySelector('.processing-status');
+            if (existingStatus) {
+                existingStatus.remove();
+            }
+            
+            // 처리 중인 문서가 없으면 표시하지 않음
+            const processingCount = Object.keys(processingDocs).length;
+            const queueSize = queueStatus ? queueStatus.queue_size : 0;
+            
+            if (processingCount === 0 && queueSize === 0) {
+                return;
+            }
+            
+            // 새로운 처리 상태 표시 추가
+            const statusDiv = document.createElement('div');
+            statusDiv.className = 'processing-status';
+            statusDiv.style.cssText = `
+                background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+                color: white;
+                padding: 15px;
+                border-radius: 10px;
+                margin-bottom: 15px;
+                text-align: center;
+                box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+            `;
+            
+            statusDiv.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 8px;">
+                    🔄 문서 처리 중
+                </div>
+                <div style="font-size: 0.9em; opacity: 0.9;">
+                    처리 중인 문서: ${processingCount}개 | 대기 중: ${queueSize}개
+                </div>
+                <div style="font-size: 0.8em; opacity: 0.8; margin-top: 5px;">
+                    완료까지 잠시 기다려주세요...
+                </div>
+            `;
+            
+            // 문서 목록 맨 위에 삽입
+            documentList.insertBefore(statusDiv, documentList.firstChild);
+        }
+
         // 페이지 로드 시 초기화
         document.addEventListener('DOMContentLoaded', () => {
             // 개발자 모드 초기화 - 비활성화 상태로 시작
@@ -2411,6 +3394,27 @@
                     }
                 });
             }, 100);
+            
+            // 초기 처리 상태 확인
+            setTimeout(async () => {
+                try {
+                    const [queueStatus, processingDocs] = await Promise.all([
+                        checkProcessingStatus(),
+                        checkProcessingDocuments()
+                    ]);
+                    
+                    const hasProcessingDocuments = (queueStatus && queueStatus.queue_size > 0) || 
+                                                  Object.keys(processingDocs).length > 0;
+                    
+                    updateUploadButtonState(hasProcessingDocuments);
+                    
+                    if (hasProcessingDocuments) {
+                        updateProcessingStatusDisplay(queueStatus, processingDocs);
+                    }
+                } catch (error) {
+                    console.error('초기 처리 상태 확인 실패:', error);
+                }
+            }, 500);
             
             // 개발자 패널은 비활성화 상태이므로 정보 로드하지 않음
             console.log('애플리케이션 초기화 완료 - 개발자 모드 비활성화 상태');

@@ -29,6 +29,9 @@ HOST=0.0.0.0
 PORT=11040
 DEBUG=true
 LOG_LEVEL=INFO
+SERVICE_HOST=1.237.52.240
+SERVICE_PORT=11040
+SERVICE_URL=http://1.237.52.240:11040
 
 # =============================================================================
 # Ollama 설정
@@ -171,6 +174,16 @@ LOG_FILE=logs/app.log
 LOG_MAX_SIZE=10485760
 LOG_BACKUP_COUNT=5
 LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
+
+# =============================================================================
+# MCP 서버 설정
+# =============================================================================
+MCP_SERVER_HOST=1.237.52.240
+MCP_SERVER_PORT=11045
+MCP_SERVER_URL=http://1.237.52.240:11045
+MCP_TIMEOUT=30
+MCP_MAX_RETRIES=3
+MCP_ENABLED=true
 """
         
         with open(env_file, 'w', encoding='utf-8') as f:
@@ -203,10 +216,19 @@ def customize_env_file():
         print("\n📡 서버 설정")
         host = input(f"호스트 (기본값: 0.0.0.0): ").strip() or "0.0.0.0"
         port = input(f"포트 (기본값: 11040): ").strip() or "11040"
+        service_host = input(f"서비스 호스트 (기본값: 1.237.52.240): ").strip() or "1.237.52.240"
+        service_port = input(f"서비스 포트 (기본값: 11040): ").strip() or "11040"
+        service_url = f"http://{service_host}:{service_port}"
         
         # Ollama 설정
         print("\n🤖 Ollama 설정")
         ollama_url = input(f"Ollama 서버 URL (기본값: http://1.237.52.240:11434): ").strip() or "http://1.237.52.240:11434"
+        
+        # MCP 서버 설정
+        print("\n🔗 MCP 서버 설정")
+        mcp_host = input(f"MCP 서버 호스트 (기본값: 1.237.52.240): ").strip() or "1.237.52.240"
+        mcp_port = input(f"MCP 서버 포트 (기본값: 11045): ").strip() or "11045"
+        mcp_url = f"http://{mcp_host}:{mcp_port}"
         
         # 기본 모델 설정
         print("\n🎯 기본 모델 설정")
@@ -226,7 +248,13 @@ def customize_env_file():
         # 설정 적용
         content = content.replace("HOST=0.0.0.0", f"HOST={host}")
         content = content.replace("PORT=11040", f"PORT={port}")
+        content = content.replace("SERVICE_HOST=1.237.52.240", f"SERVICE_HOST={service_host}")
+        content = content.replace("SERVICE_PORT=11040", f"SERVICE_PORT={service_port}")
+        content = content.replace("SERVICE_URL=http://1.237.52.240:11040", f"SERVICE_URL={service_url}")
         content = content.replace("OLLAMA_BASE_URL=http://1.237.52.240:11434", f"OLLAMA_BASE_URL={ollama_url}")
+        content = content.replace("MCP_SERVER_HOST=1.237.52.240", f"MCP_SERVER_HOST={mcp_host}")
+        content = content.replace("MCP_SERVER_PORT=11045", f"MCP_SERVER_PORT={mcp_port}")
+        content = content.replace("MCP_SERVER_URL=http://1.237.52.240:11045", f"MCP_SERVER_URL={mcp_url}")
         content = content.replace("DEFAULT_MODEL=gemma3:12b-it-qat", f"DEFAULT_MODEL={default_model}")
         content = content.replace("DEFAULT_USE_RAG=true", f"DEFAULT_USE_RAG={use_rag}")
         content = content.replace("DEFAULT_TOP_K_DOCUMENTS=5", f"DEFAULT_TOP_K_DOCUMENTS={top_k_docs}")
@@ -259,8 +287,9 @@ def validate_env_file():
         
         # 필수 설정 확인
         required_vars = [
-            "HOST", "PORT", "OLLAMA_BASE_URL", "DEFAULT_MODEL",
-            "DEFAULT_TEMPERATURE", "DEFAULT_TOP_P", "MAX_TOKENS"
+            "HOST", "PORT", "SERVICE_HOST", "SERVICE_PORT", "SERVICE_URL", 
+            "OLLAMA_BASE_URL", "MCP_SERVER_HOST", "MCP_SERVER_PORT", "MCP_SERVER_URL",
+            "DEFAULT_MODEL", "DEFAULT_TEMPERATURE", "DEFAULT_TOP_P", "MAX_TOKENS"
         ]
         
         missing_vars = []

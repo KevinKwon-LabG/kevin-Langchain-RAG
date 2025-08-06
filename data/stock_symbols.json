@@ -1,0 +1,76 @@
+{
+  "metadata": {
+    "generated_at": "1754454696.0008264",
+    "total_symbols": 10,
+    "source": "MCP Server",
+    "description": "MCP 서버에서 지원하는 주가 정보 주식 종목 목록",
+    "fields": {
+      "symbol": "종목코드",
+      "korean_name": "한글 종목명",
+      "korean_short_name": "한글 종목약명",
+      "english_name": "영문 종목명"
+    }
+  },
+  "symbols": [
+    {
+      "symbol": "005930",
+      "korean_name": "삼성전자",
+      "korean_short_name": "삼성전자",
+      "english_name": "Samsung Electronics"
+    },
+    {
+      "symbol": "000660",
+      "korean_name": "SK하이닉스",
+      "korean_short_name": "SK하이닉스",
+      "english_name": "SK Hynix"
+    },
+    {
+      "symbol": "035420",
+      "korean_name": "NAVER",
+      "korean_short_name": "NAVER",
+      "english_name": "NAVER"
+    },
+    {
+      "symbol": "051910",
+      "korean_name": "LG화학",
+      "korean_short_name": "LG화학",
+      "english_name": "LG Chem"
+    },
+    {
+      "symbol": "006400",
+      "korean_name": "삼성SDI",
+      "korean_short_name": "삼성SDI",
+      "english_name": "Samsung SDI"
+    },
+    {
+      "symbol": "035720",
+      "korean_name": "카카오",
+      "korean_short_name": "카카오",
+      "english_name": "Kakao"
+    },
+    {
+      "symbol": "207940",
+      "korean_name": "삼성바이오로직스",
+      "korean_short_name": "삼성바이오",
+      "english_name": "Samsung Biologics"
+    },
+    {
+      "symbol": "068270",
+      "korean_name": "셀트리온",
+      "korean_short_name": "셀트리온",
+      "english_name": "Celltrion"
+    },
+    {
+      "symbol": "323410",
+      "korean_name": "카카오뱅크",
+      "korean_short_name": "카카오뱅크",
+      "english_name": "KakaoBank"
+    },
+    {
+      "symbol": "373220",
+      "korean_name": "LG에너지솔루션",
+      "korean_short_name": "LG에너지솔루션",
+      "english_name": "LG Energy Solution"
+    }
+  ]
+}

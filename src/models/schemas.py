@@ -16,7 +16,7 @@ class ChatRequest(BaseModel):
     options: Optional[Dict[str, Any]] = Field({}, description="추가 옵션")
     use_rag: Optional[bool] = Field(True, description="RAG 기능 사용 여부")
     rag_top_k: Optional[int] = Field(5, description="RAG 검색 시 가져올 문서 수")
-    use_rag_for_decision: Optional[bool] = Field(True, description="Decision Service에서 RAG 사용 여부")
+    # 의사결정 서비스 제거됨
 
 class SessionInfo(BaseModel):
     """세션 정보 모델"""
@@ -59,8 +59,6 @@ class WebSearchRequest(BaseModel):
     """웹 검색 요청 모델"""
     query: str = Field(..., description="검색어")
     max_results: int = Field(5, description="최대 결과 수")
-
-
 
 class FileSearchRequest(BaseModel):
     """파일 검색 요청 모델"""

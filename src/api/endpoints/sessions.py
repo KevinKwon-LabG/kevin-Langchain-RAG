@@ -39,14 +39,13 @@ async def create_session():
         생성된 세션 정보
     """
     try:
-        # 실제 구현에서는 데이터베이스에 새 세션을 생성합니다
-        session_id = f"session_{datetime.now().timestamp()}"
-        session = {
-            "id": session_id,
-            "title": "새 대화",
-            "created_at": datetime.now().isoformat()
+        from src.utils.session_manager import get_or_create_session
+        session_data = get_or_create_session()
+        return {
+            "session_id": session_data.session_id,
+            "created_at": session_data.created_at,
+            "message": "새 세션이 생성되었습니다."
         }
-        return session
     except Exception as e:
         logger.error(f"세션 생성 중 오류: {e}")
         raise HTTPException(status_code=500, detail=f"세션 생성 실패: {str(e)}")

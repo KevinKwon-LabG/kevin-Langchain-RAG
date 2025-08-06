@@ -15,37 +15,23 @@ from src.utils.session_manager import (
     add_message_to_session,
     get_session,
     delete_session,
-    get_all_sessions,
-    build_conversation_prompt
+    get_all_sessions
 )
-from src.services.langchain_decision_service import langchain_decision_service, DecisionCategory
 from src.services.rag_service import rag_service
-
+from src.services.mcp_client_service import mcp_client_service
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
-debug_logger = logging.getLogger("chat_debug")
-debug_logger.setLevel(logging.DEBUG)
 router = APIRouter(prefix="/api/chat", tags=["Chat"])
 
 # Ollama 서버 설정
-OLLAMA_BASE_URL = "http://1.237.52.240:11434"
-
-# 사용 가능한 모델 목록
-AVAILABLE_MODELS = [
-    {"name": "gemma3:12b-it-qat", "size": "8.9 GB", "id": "5d4fa005e7bb"},
-    {"name": "llama3.1:8b", "size": "4.9 GB", "id": "46e0c10c039e"},
-    {"name": "llama3.2-vision:11b-instruct-q4_K_M", "size": "7.8 GB", "id": "6f2f9757ae97"},    
-    {"name": "qwen3:14b-q8_0", "size": "15 GB", "id": "304bf7349c71"},
-    {"name": "deepseek-r1:14b", "size": "9.0 GB", "id": "c333b7232bdb"},
-    {"name": "deepseek-v2:16b-lite-chat-q8_0", "size": "16 GB", "id": "1d62ef756269"},        
-]
+from src.config.settings import settings
+OLLAMA_BASE_URL = settings.ollama_base_url
 
 @router.post("/")
 async def chat(request: ChatRequest):
     """
     Ollama 모델과 대화를 수행합니다.
-    RAG 기능이 활성화되어 있으면 static/RAG 디렉토리의 문서를 참고합니다.
     
     Args:
         request: 채팅 요청 (모델, 메시지, 세션 ID 등 포함)
@@ -54,422 +40,631 @@ async def chat(request: ChatRequest):
         스트리밍 응답
     """
     try:
-        debug_logger.debug(f"💬 채팅 요청 시작 - 세션: {request.session_id}, 모델: {request.model}")
-        debug_logger.debug(f"📝 사용자 메시지: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
-        
         # 세션 관리
         session = get_or_create_session(request.session_id)
-        debug_logger.debug(f"🆔 세션 생성/조회 완료: {session.session_id}")
         
-        # RAG 사용 여부 확인 (기본적으로 활성화)
+        # RAG 사용 여부 확인
         use_rag = getattr(request, 'use_rag', True)
-        debug_logger.debug(f"🔍 RAG 사용 여부: {use_rag}")
         
-        # RAG가 활성화된 경우 하이브리드 응답 생성
-        if use_rag:
-            debug_logger.debug("📚 하이브리드 RAG 모드로 응답 생성 시작")
-            
-            def generate_hybrid_response():
-                """하이브리드 RAG를 사용한 스트리밍 응답 생성"""
-                try:
-                    # 하이브리드 응답 생성 (RAG + 일반 지식 조합)
-                    hybrid_response = rag_service.generate_hybrid_response(
-                        query=request.message,
-                        model=request.model,
-                        top_k=request.rag_top_k or 5,
-                        system_prompt=request.system
-                    )
-                    
-                    # 응답을 청크로 분할하여 스트리밍
-                    chunk_size = 50  # 한 번에 전송할 문자 수
-                    for i in range(0, len(hybrid_response), chunk_size):
-                        chunk = hybrid_response[i:i + chunk_size]
-                        yield f"data: {json.dumps({'response': chunk})}\n\n"
-                    
-                    # 사용자 메시지를 세션에 추가
-                    add_message_to_session(session.session_id, "user", request.message, request.model)
-                    debug_logger.debug("💾 사용자 메시지 세션에 저장됨")
-                    
-                    # 어시스턴트 메시지를 세션에 추가
-                    add_message_to_session(
-                        session.session_id, 
-                        "assistant", 
-                        hybrid_response, 
-                        request.model
-                    )
-                    debug_logger.debug("💾 어시스턴트 메시지 세션에 저장됨")
-                    
-                    # 완료 신호 전송
-                    yield f"data: {json.dumps({'done': True})}\n\n"
-                    
-                except Exception as e:
-                    debug_logger.error(f"❌ 하이브리드 응답 생성 중 오류: {e}")
-                    error_response = f"data: {json.dumps({'error': f'하이브리드 응답 생성 중 오류가 발생했습니다: {str(e)}'})}\n\n"
-                    yield error_response
-            
-            debug_logger.debug("📤 하이브리드 스트리밍 응답 반환 시작")
-            return StreamingResponse(generate_hybrid_response(), media_type="text/plain")
+        # MCP 사용 여부 확인
+        use_mcp = getattr(request, 'use_mcp', True)
         
-        # 기존 Ollama API 호출 (RAG 비활성화된 경우)
-        debug_logger.debug("🤖 일반 Ollama API 모드로 응답 생성")
-        
-        # 세션에서 대화 히스토리를 가져와서 messages 배열 구성
-        session_data = get_session(session.session_id)
-        messages = []
-        
-        # 시스템 프롬프트가 있으면 추가
-        if request.system:
-            messages.append({"role": "system", "content": request.system})
-            debug_logger.debug(f"⚙️ 시스템 프롬프트 추가: {request.system[:50]}...")
-        
-        # 이전 대화 히스토리 추가 (최근 10개 메시지만)
-        if session_data and session_data.messages:
-            history_count = len(session_data.messages[-10:])
-            debug_logger.debug(f"📚 대화 히스토리 {history_count}개 메시지 추가")
-            for message in session_data.messages[-10:]:
-                messages.append({
-                    "role": message.role,
-                    "content": message.content
-                })
-        else:
-            debug_logger.debug("🆕 새로운 대화 시작 (히스토리 없음)")
-        
-        # 현재 사용자 메시지 추가
-        messages.append({"role": "user", "content": request.message})
-        debug_logger.debug(f"👤 사용자 메시지 추가됨 (총 {len(messages)}개 메시지)")
-        
-        # Ollama API 호출
-        ollama_url = f"{OLLAMA_BASE_URL}/api/chat"
-        payload = {
-            "model": request.model,
-            "messages": messages,
-            "stream": True,
-            "options": request.options or {}
-        }
-        debug_logger.debug(f"🤖 Ollama API 호출 준비 - URL: {ollama_url}")
-        debug_logger.debug(f"📦 페이로드 크기: {len(str(payload))} 문자")
-        
-        def generate():
-            """스트리밍 응답 생성"""
-            try:
-                debug_logger.debug("🚀 Ollama API 요청 시작...")
-                response = requests.post(ollama_url, json=payload, stream=True)
-                response.raise_for_status()
-                debug_logger.debug("✅ Ollama API 연결 성공")
-                
-                full_response = ""
-                chunk_count = 0
-                for line in response.iter_lines():
-                    if line:
-                        data = json.loads(line.decode('utf-8'))
-                        if data.get('done', False):
-                            debug_logger.debug(f"✅ 응답 완료 - 총 {chunk_count}개 청크, {len(full_response)} 문자")
-                            
-                            # 사용자 메시지를 세션에 추가 (응답 완료 후)
-                            add_message_to_session(session.session_id, "user", request.message, request.model)
-                            debug_logger.debug("💾 사용자 메시지 세션에 저장됨")
-                            
-                            # 응답 완료 시 어시스턴트 메시지를 세션에 추가
-                            add_message_to_session(
-                                session.session_id, 
-                                "assistant", 
-                                full_response, 
-                                request.model
-                            )
-                            debug_logger.debug("💾 어시스턴트 메시지 세션에 저장됨")
-                            break
-                        
-                        if 'message' in data and 'content' in data['message']:
-                            chunk = data['message']['content']
-                            full_response += chunk
-                            chunk_count += 1
-                            if chunk_count % 10 == 0:  # 10개 청크마다 로그
-                                debug_logger.debug(f"📦 청크 {chunk_count} 처리 중... (현재 {len(full_response)} 문자)")
-                            yield f"data: {json.dumps({'response': chunk})}\n\n"
-                        elif 'response' in data:
-                            # 하위 호환성을 위해 /api/generate 형식도 지원
-                            chunk = data['response']
-                            full_response += chunk
-                            chunk_count += 1
-                            if chunk_count % 10 == 0:  # 10개 청크마다 로그
-                                debug_logger.debug(f"📦 청크 {chunk_count} 처리 중... (현재 {len(full_response)} 문자)")
-                            yield f"data: {json.dumps({'response': chunk})}\n\n"
-                
-                # 최종 응답 전송
-                debug_logger.debug("🏁 스트리밍 응답 완료")
-                yield f"data: {json.dumps({'done': True})}\n\n"
-                
-            except Exception as e:
-                debug_logger.error(f"❌ Ollama API 호출 중 오류: {e}")
-                logger.error(f"Ollama API 호출 중 오류: {e}")
-                error_response = f"data: {json.dumps({'error': f'AI 모델 응답 생성 중 오류가 발생했습니다: {str(e)}'})}\n\n"
-                yield error_response
-        
-        debug_logger.debug("📤 스트리밍 응답 반환 시작")
-        return StreamingResponse(generate(), media_type="text/plain")
+        # AI 응답 생성
+        return await _generate_ai_response(request, session, use_rag, use_mcp)
         
     except Exception as e:
-        debug_logger.error(f"❌ 채팅 요청 처리 중 오류: {e}")
-        logger.error(f"채팅 요청 처리 중 오류: {e}")
-        raise HTTPException(status_code=500, detail=f"채팅 처리 중 오류가 발생했습니다: {str(e)}")
+        logger.error(f"채팅 요청 처리 중 오류: {e}", exc_info=True)
+        
+        def generate_error_response():
+            error_message = f"죄송합니다. 요청을 처리하는 중 오류가 발생했습니다: {str(e)}"
+            chunk_size = 50
+            for i in range(0, len(error_message), chunk_size):
+                chunk = error_message[i:i + chunk_size]
+                yield f"data: {json.dumps({'response': chunk, 'session_id': request.session_id})}\n\n"
+            
+            yield f"data: {json.dumps({'done': True, 'session_id': request.session_id, 'error': str(e)})}\n\n"
+        
+        return StreamingResponse(
+            generate_error_response(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*"
+            }
+        )
 
-@router.post("/analyze-request")
-async def analyze_chat_request(request: ChatRequest):
+async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, use_mcp: bool):
     """
-    채팅 요청을 분석하여 적절한 서비스를 결정합니다.
-    RAG 통합 Langchain decision 서비스를 사용합니다.
+    AI 응답을 생성합니다.
     
     Args:
-        request: 채팅 요청 (모델, 메시지, 세션 ID 등 포함)
+        request: 채팅 요청
+        session: 세션 정보
+        use_rag: RAG 사용 여부
+        use_mcp: MCP 사용 여부
     
     Returns:
-        분석 결과 (서비스 결정, 이유, 신뢰도, RAG 메타데이터 등)
-    
-    Raises:
-        HTTPException: 분석 중 오류가 발생한 경우
+        StreamingResponse: 스트리밍 응답
     """
     try:
-        debug_logger.debug(f"🔍 요청 분석 시작 - 메시지: {request.message[:100]}{'...' if len(request.message) > 100 else ''}")
+        # MCP 서비스 사용 여부 확인
+        if use_mcp and mcp_client_service._should_use_mcp(request.message):
+            logger.info("MCP 서비스 사용")
+            return await _generate_mcp_response(request, session, use_rag)
         
-        # RAG 사용 여부 확인 (기본적으로 활성화)
-        use_rag_for_decision = getattr(request, 'use_rag_for_decision', True)
-        debug_logger.debug(f"🔍 Decision Service RAG 사용 여부: {use_rag_for_decision}")
-        
-        # RAG 통합 Langchain decision 서비스를 사용하여 실제 분석 수행
-        debug_logger.debug("🤖 RAG 통합 Langchain 의사결정 서비스 호출 중...")
-        
-        if use_rag_for_decision:
-            # 메타데이터와 함께 분류 수행
-            metadata = await langchain_decision_service.classify_prompt_with_metadata(
-                request.message, 
-                use_rag=True
+        # RAG 사용 여부에 따른 응답 생성
+        if use_rag:
+            # RAG 응답 생성 (MCP 통합)
+            rag_result = await rag_service.generate_rag_response(
+                query=request.message,
+                model_name=request.model,
+                use_rag=True,
+                top_k=getattr(request, 'rag_top_k', 5),
+                system_prompt=getattr(request, 'system', settings.default_system_prompt),
+                use_mcp=use_mcp
             )
-            decision_result = metadata["classification_result"]
-            rag_context_length = metadata.get("rag_context_length", 0)
-            rag_context_preview = metadata.get("rag_context_preview", "")
-            debug_logger.debug(f"📊 RAG 통합 분류 결과: {decision_result}")
-            debug_logger.debug(f"📚 RAG 컨텍스트 길이: {rag_context_length}")
-        else:
-            # 기존 방식으로 분류 수행
-            decision_result = await langchain_decision_service.classify_prompt(
-                request.message, 
-                use_rag=False
-            )
-            rag_context_length = 0
-            rag_context_preview = ""
-            debug_logger.debug(f"📊 기존 분류 결과: {decision_result}")
-        
-        # 분류 결과에 따른 서비스 타입 결정
-        service_type = "unknown"
-        decision = "UNKNOWN"
-        reason = "분류 실패"
-        confidence = 0.0
-        
-        if "날씨 정보" in decision_result:
-            service_type = "weather_service"
-            decision = "WEATHER_SERVICE"
-            reason = "날씨 관련 정보 요청으로 판단됨"
-            confidence = 0.9
-        elif "한국 주식" in decision_result:
-            service_type = "stock_service"
-            decision = "STOCK_SERVICE"
-            reason = "한국 주식 시장 정보 요청으로 판단됨"
-            confidence = 0.9
-        elif "웹 검색" in decision_result:
-            service_type = "web_search_service"
-            decision = "WEB_SEARCH_NEEDED"
-            reason = "최신 정보나 실시간 데이터가 필요한 질문으로 판단됨"
-            confidence = 0.8
-        elif "바로 답변" in decision_result:
-            service_type = "direct_answer"
-            decision = "DIRECT_ANSWER"
-            reason = "AI 모델이 바로 답변 가능한 질문으로 판단됨"
-            confidence = 0.95
-        else:
-            # 기본값
-            service_type = "web_search_service"
-            decision = "WEB_SEARCH_NEEDED"
-            reason = "분류 결과에 따라 웹 검색이 필요할 것으로 판단됨"
-            confidence = 0.7
-        
-        # RAG 컨텍스트가 있는 경우 신뢰도 향상
-        if use_rag_for_decision and rag_context_length > 0:
-            confidence = min(confidence + 0.1, 1.0)  # 최대 0.1점 향상
-            reason += f" (RAG 컨텍스트 참조: {rag_context_length}자)"
-            debug_logger.debug(f"📈 RAG 컨텍스트로 인한 신뢰도 향상: {confidence}")
-        
-        # 신뢰도 기반 의사결정: 신뢰도가 낮은 경우 웹 검색으로 폴백
-        debug_logger.debug(f"🎯 최종 분류 결과 - 서비스: {service_type}, 결정: {decision}, 신뢰도: {confidence}")
-        
-        if confidence < 0.5:
-            original_service_type = service_type
-            original_decision = decision
-            original_reason = reason
             
-            debug_logger.debug(f"⚠️ 신뢰도 낮음({confidence:.2f}), 웹 검색으로 폴백")
+            response = rag_result.get('response', 'RAG 응답을 생성할 수 없습니다.')
+            context_used = rag_result.get('rag_used', False)
+            context_score = rag_result.get('context_score', 0.0)
+            context_quality = rag_result.get('context_quality', 'low')
+            mcp_used = rag_result.get('mcp_used', False)
             
-            service_type = "web_search_service"
-            decision = "WEB_SEARCH_NEEDED"
-            reason = f"분류 신뢰도가 낮아({confidence:.2f}) 웹 검색을 권장합니다. 원래 분류: {original_decision}"
-            confidence = 0.5  # 신뢰도를 0.5로 조정
         else:
-            debug_logger.debug(f"✅ 신뢰도 충분({confidence:.2f}), 원래 분류 유지")
+            # 일반 AI 응답 생성 (Ollama 직접 호출)
+            try:
+                ollama_response = requests.post(
+                    f"{OLLAMA_BASE_URL}/api/generate",
+                    json={
+                        "model": request.model,
+                        "prompt": request.message,
+                        "stream": False,
+                        "options": {
+                            "temperature": getattr(request, 'temperature', settings.default_temperature),
+                            "top_p": getattr(request, 'top_p', settings.default_top_p),
+                            "top_k": getattr(request, 'top_k', settings.default_top_k),
+                            "repeat_penalty": getattr(request, 'repeat_penalty', settings.default_repeat_penalty),
+                            "seed": getattr(request, 'seed', settings.default_seed)
+                        }
+                    },
+                    timeout=settings.ollama_timeout
+                )
+                
+                if ollama_response.status_code == 200:
+                    response_data = ollama_response.json()
+                    response = response_data.get('response', '응답을 생성할 수 없습니다.')
+                else:
+                    response = f"Ollama 서버 오류: {ollama_response.status_code}"
+                    
+            except Exception as e:
+                response = f"AI 응답 생성 중 오류가 발생했습니다: {str(e)}"
+            
+            context_used = False
+            context_score = 0.0
+            context_quality = 'none'
+            mcp_used = False
         
-        # 분석 결과 구성 (RAG 메타데이터 포함)
-        result = {
-            "chat_request": {
-                "message": request.message,
-                "model": request.model,
-                "session_id": request.session_id
-            },
-            "analysis": {
-                "decision": decision,
-                "reason": reason,
-                "confidence": confidence,
-                "service_type": service_type,
-                "decision_result": decision_result,
-                "recommended_action": get_recommended_action(service_type),
-                "rag_metadata": {
-                    "use_rag_for_decision": use_rag_for_decision,
-                    "rag_context_length": rag_context_length,
-                    "rag_context_preview": rag_context_preview
+        # 세션에 메시지 추가
+        add_message_to_session(session.session_id, "user", request.message, request.model)
+        add_message_to_session(session.session_id, "assistant", response, request.model)
+        
+        def generate():
+            try:
+                # 응답 스트리밍
+                chunk_size = 50
+                for i in range(0, len(response), chunk_size):
+                    chunk = response[i:i + chunk_size]
+                    yield f"data: {json.dumps({'response': chunk, 'session_id': request.session_id})}\n\n"
+                
+                # 완료 메시지 (RAG 및 MCP 정보 포함)
+                completion_data = {
+                    'done': True, 
+                    'session_id': request.session_id, 
+                    'service': 'ai',
+                    'rag_used': context_used,
+                    'mcp_used': mcp_used,
+                    'context_score': context_score,
+                    'context_quality': context_quality
                 }
-            },
-            "timestamp": datetime.now().isoformat()
-        }
+                
+                yield f"data: {json.dumps(completion_data)}\n\n"
+                
+            except Exception as e:
+                error_message = f"응답 생성 중 오류가 발생했습니다: {str(e)}"
+                yield f"data: {json.dumps({'error': error_message, 'session_id': request.session_id})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'session_id': request.session_id})}\n\n"
         
-        debug_logger.debug(f"📋 분석 완료 - 최종 결정: {decision}, 서비스: {service_type}, RAG 사용: {use_rag_for_decision}")
-        return result
+        return StreamingResponse(
+            generate(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*"
+            }
+        )
         
     except Exception as e:
-        logger.error(f"요청 분석 중 오류: {e}")
-        # 오류 발생 시 기본 분석 결과 반환
-        return {
-            "chat_request": {
-                "message": request.message,
-                "model": request.model,
-                "session_id": request.session_id
-            },
-            "analysis": {
-                "decision": "WEB_SEARCH_NEEDED",
-                "reason": f"분석 중 오류 발생: {str(e)}",
-                "confidence": 0.0,
-                "service_type": "web_search_service",
-                "decision_result": "정확한 답변을 위해서는 웹 검색이 필요합니다.",
-                "recommended_action": "웹 검색 서비스 사용을 권장합니다."
-            },
-            "timestamp": datetime.now().isoformat()
-        }
+        logger.error(f"AI 응답 생성 중 오류: {e}", exc_info=True)
+        
+        def generate_error_response(error_exception):
+            error_message = f"AI 응답을 생성하는 중 오류가 발생했습니다: {str(error_exception)}"
+            chunk_size = 50
+            for i in range(0, len(error_message), chunk_size):
+                chunk = error_message[i:i + chunk_size]
+                yield f"data: {json.dumps({'response': chunk, 'session_id': request.session_id})}\n\n"
+            
+            yield f"data: {json.dumps({'done': True, 'session_id': request.session_id, 'error': str(error_exception)})}\n\n"
+        
+        return StreamingResponse(
+            generate_error_response(e),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*"
+            }
+        )
 
-
-def get_recommended_action(service_type: str) -> str:
+async def _generate_mcp_response(request: ChatRequest, session, use_rag: bool):
     """
-    서비스 타입에 따른 권장 액션을 반환합니다.
+    MCP 서비스를 사용하여 응답을 생성합니다.
     
     Args:
-        service_type: 서비스 타입
-        
+        request: 채팅 요청
+        session: 세션 정보
+        use_rag: RAG 사용 여부
+    
     Returns:
-        권장 액션 문자열
+        StreamingResponse: 스트리밍 응답
     """
-    actions = {
-        "weather_service": "날씨 API 서비스를 호출하여 실시간 날씨 정보를 제공합니다.",
-        "stock_service": "주식 API 서비스를 호출하여 실시간 주가 정보를 제공합니다.",
-        "web_search_service": "웹 검색 서비스를 호출하여 최신 정보를 검색합니다.",
-        "direct_answer": "AI 모델을 사용하여 바로 답변을 제공합니다.",
-        "unknown": "웹 검색 서비스를 사용하여 정보를 검색합니다."
-    }
-    return actions.get(service_type, "웹 검색 서비스를 사용하여 정보를 검색합니다.")
+    try:
+        # MCP 서비스 요청
+        if use_rag:
+            # RAG와 MCP 통합
+            mcp_response, mcp_success = await mcp_client_service.process_rag_with_mcp(
+                request.message, rag_service, session.session_id
+            )
+        else:
+            # MCP만 사용
+            # 날씨 요청 확인
+            weather_keywords = ["날씨", "기온", "습도", "비", "눈", "맑음", "흐림"]
+            if any(keyword in request.message for keyword in weather_keywords):
+                mcp_response, mcp_success = await mcp_client_service.process_weather_request(
+                    request.message, session.session_id
+                )
+            # 주식 요청 확인
+            elif any(keyword in request.message for keyword in ["주가", "시가", "종가", "주식"]):
+                mcp_response, mcp_success = await mcp_client_service.process_stock_request(
+                    request.message, session.session_id
+                )
+            # 검색 요청 확인
+            elif any(keyword in request.message for keyword in ["검색", "찾기", "최신", "뉴스"]):
+                mcp_response, mcp_success = await mcp_client_service.process_web_search_request(
+                    request.message, session.session_id
+                )
+            else:
+                # 일반 AI 응답으로 폴백
+                return await _generate_ai_response(request, session, use_rag, False)
+        
+        # 세션에 메시지 추가
+        add_message_to_session(session.session_id, "user", request.message, request.model)
+        add_message_to_session(session.session_id, "assistant", mcp_response, request.model)
+        
+        def generate():
+            try:
+                # 응답 스트리밍
+                chunk_size = 50
+                for i in range(0, len(mcp_response), chunk_size):
+                    chunk = mcp_response[i:i + chunk_size]
+                    yield f"data: {json.dumps({'response': chunk, 'session_id': request.session_id})}\n\n"
+                
+                # 완료 메시지
+                completion_data = {
+                    'done': True, 
+                    'session_id': request.session_id, 
+                    'service': 'mcp',
+                    'mcp_used': True,
+                    'rag_used': use_rag
+                }
+                
+                yield f"data: {json.dumps(completion_data)}\n\n"
+                
+            except Exception as e:
+                error_message = f"MCP 응답 생성 중 오류가 발생했습니다: {str(e)}"
+                yield f"data: {json.dumps({'error': error_message, 'session_id': request.session_id})}\n\n"
+                yield f"data: {json.dumps({'done': True, 'session_id': request.session_id})}\n\n"
+        
+        return StreamingResponse(
+            generate(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Headers": "*"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"MCP 응답 생성 중 오류: {e}", exc_info=True)
+        # 오류 발생 시 일반 AI 응답으로 폴백
+        return await _generate_ai_response(request, session, use_rag, False)
+
+@router.post("/mcp/weather")
+async def mcp_weather(request: ChatRequest):
+    """
+    MCP 서비스를 통해 날씨 정보를 가져옵니다.
+    
+    Args:
+        request: 채팅 요청
+    
+    Returns:
+        날씨 정보 응답
+    """
+    try:
+        # 세션 관리
+        session = get_or_create_session(request.session_id)
+        
+        # 날씨 요청 처리
+        response, success = await mcp_client_service.process_weather_request(
+            request.message, session.session_id
+        )
+        
+        # 세션에 메시지 추가
+        add_message_to_session(session.session_id, "user", request.message, request.model)
+        add_message_to_session(session.session_id, "assistant", response, request.model)
+        
+        return {
+            "status": "success",
+            "response": response,
+            "service": "mcp_weather",
+            "session_id": request.session_id,
+            "success": success
+        }
+        
+    except Exception as e:
+        logger.error(f"날씨 요청 처리 중 오류: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "session_id": request.session_id
+        }
+
+@router.post("/mcp/stock")
+async def mcp_stock(request: ChatRequest):
+    """
+    MCP 서비스를 통해 주식 정보를 가져옵니다.
+    
+    Args:
+        request: 채팅 요청
+    
+    Returns:
+        주식 정보 응답
+    """
+    try:
+        # 세션 관리
+        session = get_or_create_session(request.session_id)
+        
+        # 주식 요청 처리
+        response, success = await mcp_client_service.process_stock_request(
+            request.message, session.session_id
+        )
+        
+        # 세션에 메시지 추가
+        add_message_to_session(session.session_id, "user", request.message, request.model)
+        add_message_to_session(session.session_id, "assistant", response, request.model)
+        
+        return {
+            "status": "success",
+            "response": response,
+            "service": "mcp_stock",
+            "session_id": request.session_id,
+            "success": success
+        }
+        
+    except Exception as e:
+        logger.error(f"주식 요청 처리 중 오류: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "session_id": request.session_id
+        }
+
+@router.post("/mcp/search")
+async def mcp_search(request: ChatRequest):
+    """
+    MCP 서비스를 통해 웹 검색을 수행합니다.
+    
+    Args:
+        request: 채팅 요청
+    
+    Returns:
+        검색 결과 응답
+    """
+    try:
+        # 세션 관리
+        session = get_or_create_session(request.session_id)
+        
+        # 검색 요청 처리
+        response, success = await mcp_client_service.process_web_search_request(
+            request.message, session.session_id
+        )
+        
+        # 세션에 메시지 추가
+        add_message_to_session(session.session_id, "user", request.message, request.model)
+        add_message_to_session(session.session_id, "assistant", response, request.model)
+        
+        return {
+            "status": "success",
+            "response": response,
+            "service": "mcp_search",
+            "session_id": request.session_id,
+            "success": success
+        }
+        
+    except Exception as e:
+        logger.error(f"검색 요청 처리 중 오류: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "session_id": request.session_id
+        }
+
+@router.post("/mcp/integrated")
+async def mcp_integrated(request: ChatRequest):
+    """
+    RAG와 MCP를 통합하여 응답을 생성합니다.
+    
+    Args:
+        request: 채팅 요청
+    
+    Returns:
+        통합 응답
+    """
+    try:
+        # 세션 관리
+        session = get_or_create_session(request.session_id)
+        
+        # RAG와 MCP 통합 요청 처리
+        response, success = await mcp_client_service.process_rag_with_mcp(
+            request.message, rag_service, session.session_id
+        )
+        
+        # 세션에 메시지 추가
+        add_message_to_session(session.session_id, "user", request.message, request.model)
+        add_message_to_session(session.session_id, "assistant", response, request.model)
+        
+        return {
+            "status": "success",
+            "response": response,
+            "service": "mcp_integrated",
+            "session_id": request.session_id,
+            "success": success
+        }
+        
+    except Exception as e:
+        logger.error(f"통합 요청 처리 중 오류: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "session_id": request.session_id
+        }
+
+@router.get("/mcp/status")
+async def mcp_status():
+    """
+    MCP 서비스의 상태를 확인합니다.
+    
+    Returns:
+        MCP 서비스 상태 정보
+    """
+    try:
+        status = mcp_client_service.get_service_status()
+        return {
+            "status": "success",
+            "mcp_service": status
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 @router.get("/models")
 async def get_models():
     """
-    사용 가능한 모델 목록을 조회합니다.
+    Ollama에서 실제 모델 목록을 가져와서 반환합니다.
     
     Returns:
-        사용 가능한 모델 목록
+        모델 목록
     """
     try:
-        # Ollama 서버에서 실제 모델 목록 조회 시도
-        try:
-            response = requests.get(f"{OLLAMA_BASE_URL}/api/tags")
-            if response.status_code == 200:
-                models_data = response.json()
-                models = models_data.get('models', [])
-                return {"models": models}
-        except Exception as e:
-            logger.warning(f"Ollama 서버에서 모델 목록 조회 실패: {e}")
+        # Ollama API에서 모델 목록 가져오기
+        from src.config.settings import get_settings
+        settings = get_settings()
+        response = requests.get(f"{settings.ollama_base_url}/api/tags", timeout=10)
+        response.raise_for_status()
+        data = response.json()
         
-        # 기본 모델 목록 반환
-        return {"models": AVAILABLE_MODELS}
+        if data.get("models"):
+            # Ollama 응답을 우리 형식으로 변환
+            models = []
+            for model in data["models"]:
+                size_gb = model.get("size", 0) / (1024**3)  # 바이트를 GB로 변환
+                models.append({
+                    "name": model["name"],
+                    "size": f"{size_gb:.1f} GB",
+                    "id": model.get("digest", model["name"]),
+                    "is_current": False
+                })
+            
+            # 첫 번째 모델을 현재 모델로 설정
+            if models:
+                models[0]["is_current"] = True
+            
+            return {
+                "status": "success",
+                "models": models,
+                "current_model": models[0]["name"] if models else "unknown",
+                "total_count": len(models)
+            }
+        else:
+            return {
+                "status": "error",
+                "error": "Ollama에서 모델을 찾을 수 없습니다"
+            }
         
     except Exception as e:
-        logger.error(f"모델 목록 조회 중 오류: {e}")
-        raise HTTPException(status_code=500, detail="모델 목록 조회 중 오류가 발생했습니다.")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@router.get("/current-model")
+async def get_current_model():
+    """
+    현재 선택된 AI 모델의 상태 정보를 반환합니다.
+    
+    Returns:
+        현재 모델 정보
+    """
+    try:
+        # Ollama API에서 모델 목록 가져오기
+        from src.config.settings import get_settings
+        settings = get_settings()
+        response = requests.get(f"{settings.ollama_base_url}/api/tags", timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get("models") and len(data["models"]) > 0:
+            # 첫 번째 모델을 현재 모델로 간주
+            current_model = data["models"][0]
+            size_gb = current_model.get("size", 0) / (1024**3)  # 바이트를 GB로 변환
+            
+            # 모델 상태 확인 (간단한 테스트)
+            model_status = "unknown"
+            try:
+                # 모델이 로드되어 있는지 확인
+                status_response = requests.get(f"{settings.ollama_base_url}/api/show", 
+                                             params={"name": current_model["name"]}, 
+                                             timeout=5)
+                if status_response.status_code == 200:
+                    model_status = "loaded"
+                else:
+                    model_status = "not_loaded"
+            except Exception as e:
+                model_status = f"error: {str(e)}"
+            
+            return {
+                "status": "success",
+                "current_model": {
+                    "name": current_model["name"],
+                    "size": f"{size_gb:.1f} GB",
+                    "id": current_model.get("digest", current_model["name"]),
+                    "model_status": model_status,
+                    "modified_at": current_model.get("modified_at", "unknown"),
+                    "total_models": len(data["models"])
+                }
+            }
+        else:
+            return {
+                "status": "error",
+                "error": "Ollama에서 모델을 찾을 수 없습니다",
+                "current_model": None
+            }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "current_model": None
+        }
+
 
 @router.get("/sessions")
 async def get_sessions():
     """
-    모든 세션 정보를 조회합니다.
+    모든 세션 목록을 반환합니다.
     
     Returns:
-        세션 정보 목록
+        세션 목록
     """
     try:
         sessions = get_all_sessions()
-        return {"sessions": sessions}
+        
+        return {
+            "status": "success",
+            "sessions": sessions,
+            "total_count": len(sessions)
+        }
+        
     except Exception as e:
-        logger.error(f"세션 목록 조회 중 오류: {e}")
-        raise HTTPException(status_code=500, detail="세션 목록 조회 중 오류가 발생했습니다.")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 @router.get("/sessions/{session_id}")
 async def get_session_info(session_id: str):
     """
-    특정 세션 정보를 조회합니다.
+    특정 세션의 정보를 반환합니다.
     
     Args:
-        session_id: 조회할 세션 ID
+        session_id: 세션 ID
     
     Returns:
         세션 정보
-    
-    Raises:
-        HTTPException: 세션을 찾을 수 없는 경우
     """
     try:
         session = get_session(session_id)
+        
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
         
-        return {"session": session}
+        return {
+            "status": "success",
+            "session": session
+        }
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"세션 조회 중 오류: {e}")
-        raise HTTPException(status_code=500, detail="세션 조회 중 오류가 발생했습니다.")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 @router.delete("/sessions/{session_id}")
 async def delete_session_endpoint(session_id: str):
     """
-    세션을 삭제합니다.
+    특정 세션을 삭제합니다.
     
     Args:
-        session_id: 삭제할 세션 ID
+        session_id: 세션 ID
     
     Returns:
         삭제 결과
     """
     try:
-        success = delete_session(session_id)
-        if success:
-            return {"message": "세션이 삭제되었습니다."}
-        else:
-            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
-    except HTTPException:
-        raise
+        delete_session(session_id)
+        
+        return {
+            "status": "success",
+            "message": f"세션 {session_id}가 삭제되었습니다."
+        }
+        
     except Exception as e:
-        logger.error(f"세션 삭제 중 오류: {e}")
-        raise HTTPException(status_code=500, detail="세션 삭제 중 오류가 발생했습니다.")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 @router.post("/sessions")
 async def create_session_endpoint():
@@ -481,172 +676,59 @@ async def create_session_endpoint():
     """
     try:
         session = get_or_create_session()
+        
         return {
-            "session_id": session.session_id,
-            "created_at": session.created_at,
-            "message": "새 세션이 생성되었습니다."
+            "status": "success",
+            "session": session
         }
+        
     except Exception as e:
-        logger.error(f"세션 생성 중 오류: {e}")
-        raise HTTPException(status_code=500, detail="세션 생성 중 오류가 발생했습니다.")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 @router.get("/health")
 async def health_check():
     """
-    채팅 서비스 상태를 확인합니다.
+    서비스 상태를 확인합니다.
     
     Returns:
         서비스 상태 정보
     """
     try:
-        # Ollama 서버 연결 상태 확인
+        # Ollama 서버 연결 확인
         ollama_status = "unknown"
         try:
             response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
-            ollama_status = "connected" if response.status_code == 200 else "error"
-        except Exception:
-            ollama_status = "disconnected"
-        
-        # 세션 통계
-        from src.utils.session_manager import get_session_stats
-        session_stats = get_session_stats()
+            if response.status_code == 200:
+                ollama_status = "healthy"
+            else:
+                ollama_status = "unhealthy"
+        except Exception as e:
+            ollama_status = f"error: {str(e)}"
         
         # RAG 상태 확인
         rag_status = rag_service.get_rag_status()
         
-        health_info = {
+        # MCP 상태 확인
+        mcp_status = mcp_client_service.get_service_status()
+        
+        return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "ollama_server": ollama_status,
-            "ollama_url": OLLAMA_BASE_URL,
-            "session_stats": session_stats,
-            "available_models": len(AVAILABLE_MODELS),
-            "rag_status": rag_status
+            "services": {
+                "ollama": ollama_status,
+                "rag": rag_status.get("status", "unknown"),
+                "mcp": mcp_status.get("status", "unknown")
+            },
+            "rag_info": rag_status,
+            "mcp_info": mcp_status
         }
-        return health_info
+        
     except Exception as e:
-        logger.error(f"헬스 체크 중 오류: {e}")
         return {
             "status": "unhealthy",
-            "timestamp": datetime.now().isoformat(),
-            "error": str(e)
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
         }
-
-@router.post("/rag/reload")
-async def reload_rag_documents():
-    """
-    RAG 문서들을 다시 로드합니다.
-    
-    Returns:
-        재로드 결과
-    """
-    try:
-        debug_logger.debug("🔄 RAG 문서 재로드 요청")
-        result = rag_service.reload_rag_documents()
-        debug_logger.debug(f"✅ RAG 문서 재로드 완료: {result}")
-        return result
-    except Exception as e:
-        debug_logger.error(f"❌ RAG 문서 재로드 실패: {e}")
-        logger.error(f"RAG 문서 재로드 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"RAG 문서 재로드 중 오류가 발생했습니다: {str(e)}")
-
-@router.get("/rag/status")
-async def get_rag_status():
-    """
-    RAG 서비스 상태를 조회합니다.
-    
-    Returns:
-        RAG 상태 정보
-    """
-    try:
-        debug_logger.debug("📊 RAG 상태 조회")
-        status = rag_service.get_rag_status()
-        debug_logger.debug(f"✅ RAG 상태 조회 완료: {status}")
-        return status
-    except Exception as e:
-        debug_logger.error(f"❌ RAG 상태 조회 실패: {e}")
-        logger.error(f"RAG 상태 조회 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"RAG 상태 조회 중 오류가 발생했습니다: {str(e)}")
-
-@router.put("/rag/settings")
-async def update_rag_settings(
-    similarity_threshold: Optional[float] = None,
-    context_weight: Optional[float] = None,
-    min_context_length: Optional[int] = None
-):
-    """
-    RAG 설정을 동적으로 업데이트합니다.
-    
-    Args:
-        similarity_threshold: 유사도 임계값 (0.0 ~ 1.0)
-        context_weight: 컨텍스트 가중치 (0.0 ~ 1.0)
-        min_context_length: 최소 컨텍스트 길이 (문자 수)
-    
-    Returns:
-        업데이트된 설정 정보
-    """
-    try:
-        debug_logger.debug("⚙️ RAG 설정 업데이트 요청")
-        debug_logger.debug(f"📝 업데이트할 설정: similarity_threshold={similarity_threshold}, context_weight={context_weight}, min_context_length={min_context_length}")
-        
-        # 입력값 검증
-        if similarity_threshold is not None and not (0.0 <= similarity_threshold <= 1.0):
-            raise HTTPException(status_code=400, detail="유사도 임계값은 0.0과 1.0 사이여야 합니다.")
-        
-        if context_weight is not None and not (0.0 <= context_weight <= 1.0):
-            raise HTTPException(status_code=400, detail="컨텍스트 가중치는 0.0과 1.0 사이여야 합니다.")
-        
-        if min_context_length is not None and min_context_length < 0:
-            raise HTTPException(status_code=400, detail="최소 컨텍스트 길이는 0 이상이어야 합니다.")
-        
-        # 설정 업데이트
-        result = rag_service.update_settings(
-            similarity_threshold=similarity_threshold,
-            context_weight=context_weight,
-            min_context_length=min_context_length
-        )
-        
-        debug_logger.debug(f"✅ RAG 설정 업데이트 완료: {result}")
-        return result
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        debug_logger.error(f"❌ RAG 설정 업데이트 실패: {e}")
-        logger.error(f"RAG 설정 업데이트 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"RAG 설정 업데이트 중 오류가 발생했습니다: {str(e)}")
-
-@router.get("/rag/settings")
-async def get_rag_settings():
-    """
-    현재 RAG 설정을 조회합니다.
-    
-    Returns:
-        현재 RAG 설정 정보
-    """
-    try:
-        debug_logger.debug("⚙️ RAG 설정 조회")
-        status = rag_service.get_rag_status()
-        
-        if "settings" in status:
-            settings = status["settings"]
-            debug_logger.debug(f"✅ RAG 설정 조회 완료: {settings}")
-            return {
-                "status": "success",
-                "settings": settings,
-                "description": {
-                    "similarity_threshold": "유사도 임계값 (0.0 ~ 1.0) - 높을수록 더 관련성 높은 문서만 포함",
-                    "context_weight": "컨텍스트 가중치 (0.0 ~ 1.0) - RAG 데이터의 중요도",
-                    "min_context_length": "최소 컨텍스트 길이 (문자 수) - 이보다 짧으면 일반 응답으로 폴백"
-                }
-            }
-        else:
-            return {
-                "status": "error",
-                "message": "설정 정보를 가져올 수 없습니다."
-            }
-            
-    except Exception as e:
-        debug_logger.error(f"❌ RAG 설정 조회 실패: {e}")
-        logger.error(f"RAG 설정 조회 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"RAG 설정 조회 중 오류가 발생했습니다: {str(e)}")

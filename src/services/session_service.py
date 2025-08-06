@@ -22,11 +22,11 @@ class SessionService:
             self.chat_sessions[session_id] = SessionData(
                 session_id=session_id,
                 messages=[],
-                created_at=datetime.now(),
-                last_active=datetime.now()
+                created_at=datetime.now().isoformat(),
+                last_active=datetime.now().isoformat()
             )
         else:
-            self.chat_sessions[session_id].last_active = datetime.now()
+            self.chat_sessions[session_id].last_active = datetime.now().isoformat()
         
         # 빈 세션 정리
         self.cleanup_empty_sessions()
@@ -48,13 +48,13 @@ class SessionService:
         message = Message(
             role=role,
             content=content,
-            timestamp=datetime.now(),
+            timestamp=datetime.now().isoformat(),
             model=model,
             sources=sources
         )
         
         self.chat_sessions[session_id].messages.append(message)
-        self.chat_sessions[session_id].last_active = datetime.now()
+        self.chat_sessions[session_id].last_active = datetime.now().isoformat()
         
         return True
     

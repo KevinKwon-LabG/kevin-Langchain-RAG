@@ -4,6 +4,7 @@ import threading
 import asyncio
 import queue
 import warnings
+import re
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 import logging
@@ -24,6 +25,17 @@ import chromadb
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.schema import Document
+
+import io
+
+# 엑셀 전처리 프로세서 추가
+from src.services.excel_processor import excel_processor
+
+# 워드 전처리 프로세서 추가
+from src.services.word_processor import word_processor
+
+# PDF 전처리 프로세서 추가
+from src.services.pdf_processor import pdf_processor
 
 from src.config.settings import settings
 
@@ -56,6 +68,22 @@ class DocumentService:
         self._start_processing_thread()
         
         self._initialize_vectorstore()
+    
+
+    
+    def _get_document_type(self, file_extension: str) -> str:
+        """파일 확장자로 문서 타입 결정"""
+        extension_mapping = {
+            '.pdf': 'pdf',
+            '.txt': 'text',
+            '.docx': 'word',
+            '.doc': 'word',
+            '.md': 'markdown',
+            '.xlsx': 'excel',
+            '.xls': 'excel',
+            '.csv': 'excel'
+        }
+        return extension_mapping.get(file_extension, 'unknown')
     
     def _initialize_vectorstore(self):
         """벡터 저장소 초기화"""
@@ -119,12 +147,18 @@ class DocumentService:
             # 문서 ID 생성
             doc_id = str(uuid.uuid4())
             
+            # 파일 확장자로 문서 타입 결정
+            file_extension = os.path.splitext(filename)[1].lower()
+            document_type = self._get_document_type(file_extension)
+            
             # 기본 메타데이터 설정
             base_metadata = {
                 "filename": filename,
                 "doc_id": doc_id,
                 "created_at": datetime.now().isoformat(),
-                "source": "upload"
+                "source": "upload",
+                "file_type": file_extension,
+                "document_type": document_type
             }
             
             if metadata:
@@ -154,30 +188,32 @@ class DocumentService:
         
         try:
             if file_extension == '.pdf':
-                loader = PyPDFLoader(file_path)
-                documents = loader.load()
-                return "\n".join([doc.page_content for doc in documents])
+                # 개선된 PDF 전처리 프로세서 사용
+                logger.info(f"PDF 파일 전처리 시작: {file_path}")
+                processed_content = pdf_processor.process_pdf_file(file_path)
+                logger.info(f"PDF 파일 전처리 완료: {file_path} (길이: {len(processed_content)} 문자)")
+                return processed_content
             elif file_extension == '.txt':
                 loader = TextLoader(file_path, encoding='utf-8')
                 documents = loader.load()
                 return "\n".join([doc.page_content for doc in documents])
             elif file_extension == '.docx':
-                # docx2txt를 사용하여 .docx 파일 처리
-                try:
-                    text = docx2txt.process(file_path)
-                    return text
-                except Exception as e:
-                    logger.error(f".docx 파일 처리 실패: {e}")
-                    raise ValueError(f".docx 파일을 처리할 수 없습니다: {e}")
+                # 워드 텍스트 추출 프로세서 사용
+                logger.info(f"워드 파일 텍스트 추출 시작: {file_path}")
+                processed_content = word_processor.extract_text_from_word(file_path)
+                logger.info(f"워드 파일 텍스트 추출 완료: {file_path} (길이: {len(processed_content)} 문자)")
+                return processed_content
 
             elif file_extension == '.md':
                 loader = UnstructuredMarkdownLoader(file_path)
                 documents = loader.load()
                 return "\n".join([doc.page_content for doc in documents])
-            elif file_extension in ['.xlsx', '.xls']:
-                loader = UnstructuredExcelLoader(file_path)
-                documents = loader.load()
-                return "\n".join([doc.page_content for doc in documents])
+            elif file_extension in ['.xlsx', '.xls', '.csv']:
+                # 엑셀 텍스트 추출 프로세서 사용
+                logger.info(f"엑셀 파일 텍스트 추출 시작: {file_path}")
+                processed_content = excel_processor.extract_text_from_excel(file_path)
+                logger.info(f"엑셀 파일 텍스트 추출 완료: {file_path} (길이: {len(processed_content)} 문자)")
+                return processed_content
             else:
                 raise ValueError(f"지원하지 않는 파일 형식: {file_extension}")
         
@@ -272,6 +308,27 @@ class DocumentService:
             except Exception as e:
                 logger.error(f"문서 삭제 실패: {e}")
                 return False
+    
+    def delete_documents_by_filename(self, filename: str) -> int:
+        """파일명으로 모든 관련 문서 삭제 (스레드 안전)"""
+        with self._write_lock:  # 쓰기 작업 시 락 획득
+            try:
+                # 파일명으로 모든 관련 문서 삭제
+                result = self.vectorstore._collection.delete(
+                    where={"filename": filename}
+                )
+                
+                # Chroma의 delete 메서드는 삭제된 문서 수를 반환하거나 None을 반환할 수 있음
+                if result is None:
+                    deleted_count = 0
+                else:
+                    deleted_count = result
+                
+                logger.info(f"파일명 '{filename}'에 해당하는 {deleted_count}개 문서 청크가 삭제되었습니다.")
+                return deleted_count
+            except Exception as e:
+                logger.error(f"파일명으로 문서 삭제 실패: {e}")
+                return 0
     
     def get_vectorstore_status(self) -> str:
         """벡터 저장소 상태 확인 (스레드 안전)"""

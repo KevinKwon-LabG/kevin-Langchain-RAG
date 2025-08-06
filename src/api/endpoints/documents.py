@@ -15,6 +15,7 @@ import asyncio
 
 from src.services.document_service import document_service
 from src.services.rag_service import rag_service
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ def document_processing_callback(success: bool, doc_id: Optional[str], error: Op
                 processing_documents[filename]["status"] = "completed"
                 processing_documents[filename]["doc_id"] = doc_id
                 processing_documents[filename]["completed_at"] = datetime.now().isoformat()
+                processing_documents[filename]["final_status"] = "completed"  # 최종 상태 표시
                 
                 # RAG 문서 자동 재로드
                 try:
@@ -69,11 +71,11 @@ def document_processing_callback(success: bool, doc_id: Optional[str], error: Op
                 except Exception as e:
                     logger.error(f"RAG 자동 재로드 실패: {e}")
                 
-                # 30초 후 처리 완료된 문서 제거
+                # 60초 후 처리 완료된 문서 제거 (더 긴 시간으로 연장)
                 import threading
                 def remove_completed_document():
                     import time
-                    time.sleep(30)
+                    time.sleep(60)
                     if filename in processing_documents:
                         del processing_documents[filename]
                         logger.info(f"처리 완료된 문서 '{filename}'을 목록에서 제거했습니다.")
@@ -88,11 +90,12 @@ def document_processing_callback(success: bool, doc_id: Optional[str], error: Op
                 processing_documents[filename]["status"] = "failed"
                 processing_documents[filename]["error"] = error
                 processing_documents[filename]["failed_at"] = datetime.now().isoformat()
-                # 30초 후 처리 실패한 문서 제거
+                processing_documents[filename]["final_status"] = "failed"  # 최종 상태 표시
+                # 60초 후 처리 실패한 문서 제거 (더 긴 시간으로 연장)
                 import threading
                 def remove_failed_document():
                     import time
-                    time.sleep(30)
+                    time.sleep(60)
                     if filename in processing_documents:
                         del processing_documents[filename]
                         logger.info(f"처리 실패한 문서 '{filename}'을 목록에서 제거했습니다.")
@@ -162,18 +165,31 @@ async def upload_document(file: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        logger.info(f"문서 업로드 완료: {filename}")
+        logger.info(f"문서 업로드 완료: {filename} (크기: {file.size} bytes)")
         
         # 문서 처리 시작 (비동기)
         try:
+            # PDF 파일인 경우 특별 처리
+            file_extension = get_file_extension(filename).lower()
+            if file_extension == '.pdf':
+                logger.info(f"PDF 문서 전처리 시작: {filename}")
+            
             content = document_service.load_document(file_path)
+            
+            if not content.strip():
+                raise ValueError("문서에서 텍스트를 추출할 수 없습니다.")
+            
+            logger.info(f"문서 텍스트 추출 완료: {filename} (길이: {len(content)} 문자)")
             
             # 처리 상태 초기화
             processing_documents[filename] = {
                 "status": "processing",
                 "doc_id": "processing",
                 "started_at": datetime.now().isoformat(),
-                "filename": filename
+                "filename": filename,
+                "file_size": file.size,
+                "file_type": file_extension,
+                "text_length": len(content)
             }
             
             # 비동기 처리 시작
@@ -183,7 +199,9 @@ async def upload_document(file: UploadFile = File(...)):
                 metadata={
                     "source": "upload",
                     "file_size": file.size,
-                    "file_type": get_file_extension(filename)
+                    "file_type": file_extension,
+                    "text_length": len(content),
+                    "upload_time": datetime.now().isoformat()
                 },
                 callback=document_processing_callback
             )
@@ -194,16 +212,25 @@ async def upload_document(file: UploadFile = File(...)):
                     "message": "문서가 업로드되었고 처리 중입니다.",
                     "filename": filename,
                     "doc_id": doc_id,
-                    "status": "processing"
+                    "status": "processing",
+                    "file_size": file.size,
+                    "text_length": len(content),
+                    "file_type": file_extension
                 }
             )
             
         except Exception as e:
-            logger.error(f"문서 처리 시작 실패: {e}")
+            logger.error(f"문서 처리 시작 실패: {filename}, 오류: {e}")
             # 파일 삭제
             if os.path.exists(file_path):
                 os.remove(file_path)
-            raise HTTPException(status_code=500, detail=f"문서 처리 중 오류가 발생했습니다: {str(e)}")
+                logger.info(f"실패한 파일 삭제: {file_path}")
+            
+            error_message = f"문서 처리 중 오류가 발생했습니다: {str(e)}"
+            if "PDF" in str(e):
+                error_message += " (PDF 파일이 손상되었거나 텍스트를 추출할 수 없습니다.)"
+            
+            raise HTTPException(status_code=500, detail=error_message)
         
     except HTTPException:
         raise
@@ -242,6 +269,61 @@ async def get_processing_documents() -> Dict[str, Any]:
         logger.error(f"처리 중인 문서 목록 조회 실패: {e}")
         raise HTTPException(status_code=500, detail="처리 중인 문서 목록 조회 중 오류가 발생했습니다.")
 
+@router.get("/api/documents/check-document-status/{filename}")
+async def check_document_status(filename: str) -> Dict[str, Any]:
+    """
+    특정 문서의 처리 상태를 확인합니다.
+    """
+    try:
+        # 1. 처리 중인 문서 목록에서 확인
+        if filename in processing_documents:
+            status = processing_documents[filename]
+            return {
+                "filename": filename,
+                "status": "processing",
+                "processing_status": status,
+                "in_processing_list": True
+            }
+        
+        # 2. 벡터 저장소에서 문서 존재 여부 확인
+        try:
+            # 파일명으로 벡터 저장소에서 검색
+            search_results = document_service.search_documents(
+                query="", 
+                top_k=1, 
+                filter_metadata={"filename": filename}
+            )
+            
+            if search_results:
+                return {
+                    "filename": filename,
+                    "status": "completed",
+                    "in_vectorstore": True,
+                    "chunk_count": len(search_results)
+                }
+        except Exception as e:
+            logger.error(f"벡터 저장소 검색 실패: {e}")
+        
+        # 3. 파일 시스템에서 파일 존재 여부 확인
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        if os.path.exists(file_path):
+            return {
+                "filename": filename,
+                "status": "file_exists",
+                "in_filesystem": True,
+                "file_size": os.path.getsize(file_path)
+            }
+        
+        return {
+            "filename": filename,
+            "status": "not_found",
+            "message": "문서를 찾을 수 없습니다."
+        }
+        
+    except Exception as e:
+        logger.error(f"문서 상태 확인 실패: {e}")
+        raise HTTPException(status_code=500, detail="문서 상태 확인 중 오류가 발생했습니다.")
+
 @router.delete("/api/documents/{filename}")
 async def delete_document(filename: str):
     """
@@ -263,39 +345,70 @@ async def delete_document(filename: str):
             raise HTTPException(status_code=400, detail="파일이 아닙니다.")
         
         # 벡터 저장소에서 해당 문서 삭제 시도
+        deleted_count = 0
+        vectorstore_deletion_success = True
+        vectorstore_error = None
+        
         try:
-            # 파일명으로 문서 ID 찾기 (메타데이터에서 검색)
-            search_results = document_service.search_documents(
-                query="", 
-                top_k=1000, 
-                filter_metadata={"filename": filename}
-            )
+            # 파일명으로 직접 모든 관련 문서 삭제 (더 효율적)
+            deleted_count = document_service.delete_documents_by_filename(filename)
             
-            # 해당 문서의 모든 청크 삭제
-            for result in search_results:
-                doc_id = result.get("id")
-                if doc_id and doc_id != "unknown":
-                    document_service.delete_document(doc_id)
-                    logger.info(f"벡터 저장소에서 문서 삭제 완료: {doc_id}")
-                    break
+            if deleted_count > 0:
+                logger.info(f"벡터 저장소에서 총 {deleted_count}개 문서 청크가 삭제되었습니다.")
+            else:
+                logger.warning(f"파일명 '{filename}'에 해당하는 벡터 저장소 문서를 찾을 수 없습니다.")
                     
         except Exception as e:
-            logger.warning(f"벡터 저장소에서 문서 삭제 실패 (파일은 삭제됨): {e}")
+            logger.error(f"벡터 저장소에서 문서 삭제 실패: {e}")
+            vectorstore_deletion_success = False
+            vectorstore_error = str(e)
         
-        # 파일 삭제
-        os.remove(file_path)
+        # 벡터스토어 삭제가 성공한 경우에만 파일 삭제
+        if vectorstore_deletion_success:
+            # 파일 삭제
+            os.remove(file_path)
+            logger.info(f"파일 삭제 완료: {filename}")
+        else:
+            # 벡터스토어 삭제 실패 시 파일은 유지
+            logger.warning(f"벡터스토어 삭제 실패로 인해 파일 '{filename}'은 유지됩니다.")
+            error_detail = f"벡터스토어에서 문서 삭제에 실패했습니다. 파일은 삭제되지 않았습니다."
+            if vectorstore_error:
+                error_detail += f" 오류: {vectorstore_error}"
+            raise HTTPException(
+                status_code=500, 
+                detail=error_detail
+            )
         
         # 처리 중인 문서 목록에서도 제거
         if filename in processing_documents:
             del processing_documents[filename]
         
+        # RAG 문서 자동 재로드 (삭제 후 동기화)
+        try:
+            logger.info(f"문서 '{filename}' 삭제 후 RAG 자동 재로드 시작")
+            rag_result = rag_service.reload_rag_documents()
+            logger.info(f"RAG 자동 재로드 완료: {rag_result}")
+        except Exception as e:
+            logger.error(f"RAG 자동 재로드 실패: {e}")
+        
         logger.info(f"문서 삭제 완료: {filename}")
+        
+        # 삭제 결과에 따른 메시지 생성
+        if deleted_count > 0:
+            message = f"문서가 성공적으로 삭제되었습니다. (벡터 저장소에서 {deleted_count}개 청크 삭제됨)"
+        else:
+            # 벡터 저장소에서 문서를 찾지 못한 경우, 처리 상태 확인
+            if filename in processing_documents:
+                message = "문서가 성공적으로 삭제되었습니다. (문서가 아직 처리 중이었습니다)"
+            else:
+                message = "문서가 성공적으로 삭제되었습니다. (벡터 저장소에서 해당 문서를 찾을 수 없었습니다)"
         
         return JSONResponse(
             status_code=200,
             content={
-                "message": "문서가 성공적으로 삭제되었습니다.",
-                "filename": filename
+                "message": message,
+                "filename": filename,
+                "deleted_vector_chunks": deleted_count
             }
         )
         
@@ -304,6 +417,8 @@ async def delete_document(filename: str):
     except Exception as e:
         logger.error(f"문서 삭제 중 오류 발생: {str(e)}")
         raise HTTPException(status_code=500, detail="문서 삭제 중 오류가 발생했습니다.")
+
+
 
 @router.get("/api/documents/{filename}/download")
 async def download_document(filename: str):
@@ -336,4 +451,142 @@ async def download_document(filename: str):
         raise
     except Exception as e:
         logger.error(f"문서 다운로드 중 오류 발생: {str(e)}")
-        raise HTTPException(status_code=500, detail="문서 다운로드 중 오류가 발생했습니다.") 
+        raise HTTPException(status_code=500, detail="문서 다운로드 중 오류가 발생했습니다.")
+
+
+@router.delete("/api/documents/dev/reset-all")
+async def dev_reset_all_data():
+    """
+    개발자 모드 전용: 모든 업로드된 문서와 벡터 스토어 데이터를 완전히 초기화합니다.
+    """
+    try:
+        ensure_upload_dir()
+        
+        # 1. 업로드된 모든 파일 삭제
+        deleted_files = []
+        for filename in os.listdir(UPLOAD_DIR):
+            file_path = os.path.join(UPLOAD_DIR, filename)
+            if os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                    deleted_files.append(filename)
+                    logger.info(f"파일 삭제 완료: {filename}")
+                except Exception as e:
+                    logger.error(f"파일 삭제 실패 {filename}: {e}")
+        
+        # 2. 벡터 저장소에서 모든 문서 삭제
+        deleted_docs = 0
+        try:
+            # 모든 문서 조회
+            all_documents = document_service.get_all_documents()
+            
+            for doc in all_documents:
+                doc_id = doc.get("id")
+                if doc_id and doc_id != "unknown":
+                    if document_service.delete_document(doc_id):
+                        deleted_docs += 1
+                        logger.info(f"벡터 저장소에서 문서 삭제 완료: {doc_id}")
+            
+            logger.info(f"벡터 저장소에서 총 {deleted_docs}개 문서 삭제 완료")
+            
+        except Exception as e:
+            logger.error(f"벡터 저장소 정리 중 오류: {e}")
+        
+        # 3. Chroma 벡터 저장소 캐시 데이터 완전 삭제
+        cache_deleted = False
+        try:
+            # Chroma 벡터 저장소 디렉토리 삭제
+            vectorstore_path = settings.chroma_persist_directory
+            if os.path.exists(vectorstore_path):
+                shutil.rmtree(vectorstore_path)
+                logger.info(f"Chroma 벡터 저장소 캐시 삭제 완료: {vectorstore_path}")
+                cache_deleted = True
+            else:
+                logger.info("삭제할 Chroma 벡터 저장소가 존재하지 않습니다.")
+                
+        except Exception as e:
+            logger.error(f"Chroma 벡터 저장소 캐시 삭제 중 오류: {e}")
+            # 캐시 삭제 실패해도 계속 진행
+        
+        # 4. 처리 중인 문서 목록 초기화
+        processing_documents.clear()
+        
+        # 5. 벡터 저장소 재초기화 (캐시 삭제 후)
+        vectorstore_reinitialized = False
+        if cache_deleted:
+            try:
+                logger.info("벡터 저장소 재초기화 시작")
+                document_service._initialize_vectorstore()
+                vectorstore_reinitialized = True
+                logger.info("벡터 저장소 재초기화 완료")
+            except Exception as e:
+                logger.error(f"벡터 저장소 재초기화 실패: {e}")
+        
+        # 6. RAG 서비스 재초기화
+        try:
+            logger.info("RAG 서비스 재초기화 시작")
+            rag_result = rag_service.reload_rag_documents()
+            logger.info(f"RAG 서비스 재초기화 완료: {rag_result}")
+        except Exception as e:
+            logger.error(f"RAG 서비스 재초기화 실패: {e}")
+        
+        logger.info(f"개발자 모드 전체 초기화 완료: {len(deleted_files)}개 파일, {deleted_docs}개 문서, 캐시 삭제: {cache_deleted}, 벡터저장소 재초기화: {vectorstore_reinitialized}")
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "개발자 모드: 모든 데이터가 성공적으로 초기화되었습니다.",
+                "deleted_files": deleted_files,
+                "deleted_files_count": len(deleted_files),
+                "deleted_vector_documents": deleted_docs,
+                "cache_deleted": cache_deleted,
+                "vectorstore_reinitialized": vectorstore_reinitialized
+            }
+        )
+        
+    except Exception as e:
+        error_msg = f"개발자 모드 전체 초기화 중 오류 발생: {str(e)}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
+
+
+@router.get("/api/documents/dev/vectorstore-status")
+async def get_vectorstore_status():
+    """
+    개발자 모드 전용: 벡터 스토어 상태 정보를 반환합니다.
+    """
+    try:
+        # 문서 수 조회
+        document_count = document_service.get_document_count()
+        
+        # 모든 문서 정보 조회
+        all_documents = document_service.get_all_documents()
+        
+        # 파일 시스템의 업로드된 파일 수 조회
+        upload_dir_files = []
+        if os.path.exists(UPLOAD_DIR):
+            for filename in os.listdir(UPLOAD_DIR):
+                file_path = os.path.join(UPLOAD_DIR, filename)
+                if os.path.isfile(file_path):
+                    file_size = os.path.getsize(file_path)
+                    upload_dir_files.append({
+                        "filename": filename,
+                        "size": file_size,
+                        "size_mb": round(file_size / (1024 * 1024), 2)
+                    })
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "vectorstore_status": document_service.get_vectorstore_status(),
+                "document_count": document_count,
+                "uploaded_files_count": len(upload_dir_files),
+                "uploaded_files": upload_dir_files,
+                "all_documents": all_documents
+            }
+        )
+        
+    except Exception as e:
+        error_msg = f"벡터 스토어 상태 조회 중 오류 발생: {str(e)}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg) 

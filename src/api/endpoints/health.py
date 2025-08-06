@@ -41,8 +41,8 @@ async def get_health():
                 response = await client.get(f"{settings.ollama_base_url}/api/tags")
                 ollama_connected = response.status_code == 200
         except Exception as e:
-            # logger.warning(f"Ollama 서버 연결 실패: {e}")
-            pass
+            logger.debug(f"Ollama 서버 연결 실패: {e}")
+            ollama_connected = False
         
         return {
             "status": "healthy",
@@ -60,11 +60,11 @@ async def get_health():
             "ollama_connected": ollama_connected
         }
     except Exception as e:
-        # logger.error(f"Health check 실패: {e}")
+        logger.error(f"Health check 실패: {e}")
         return {
             "status": "unhealthy",
             "timestamp": datetime.now().isoformat(),
-            "error": str(e)
+            "error": "서비스 점검 중 오류가 발생했습니다"
         }
 
 @router.get("/api/health/simple")
@@ -118,16 +118,19 @@ async def get_system_resources():
             result = subprocess.run(['nvidia-smi', '--query-gpu=name,utilization.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'], 
                                   capture_output=True, text=True, timeout=5)
             
-            if result.returncode == 0:
+            if result.returncode == 0 and result.stdout.strip():
+                print(f"DEBUG: nvidia-smi 출력: {result.stdout.strip()}")
                 lines = result.stdout.strip().split('\n')
                 for i, line in enumerate(lines):
                     if line.strip():
-                        parts = line.split(', ')
+                        parts = [part.strip() for part in line.split(',')]
+                        print(f"DEBUG: GPU {i} 파싱 - 원본: '{line}', 분리된 부분: {parts}")
                         if len(parts) >= 4:
                             gpu_name = parts[0].strip()
                             gpu_util = parts[1].strip()
                             vram_used = parts[2].strip()
                             vram_total = parts[3].strip()
+                            print(f"DEBUG: GPU {i} - 이름: '{gpu_name}', 점유률: '{gpu_util}', VRAM 사용: '{vram_used}', VRAM 전체: '{vram_total}'")
                             
                             gpu_info.append({
                                 "id": i,
@@ -141,10 +144,12 @@ async def get_system_resources():
                                 "total_mb": int(vram_total) if vram_total.isdigit() else 0,
                                 "percent": round((int(vram_used) / int(vram_total)) * 100, 1) if vram_used.isdigit() and vram_total.isdigit() and int(vram_total) > 0 else 0
                             })
+            else:
+                # nvidia-smi 명령이 실패하거나 출력이 없는 경우
+                raise Exception("GPU 정보를 가져올 수 없습니다")
         except Exception as e:
-            # logger.warning(f"GPU 정보 수집 실패: {e}")
-            # GPU가 없는 경우 기본값
-            gpu_info = [{"id": 0, "name": "GPU 없음", "utilization": 0}]
+            # GPU가 없거나 접근할 수 없는 경우 기본값
+            gpu_info = [{"id": 0, "name": "GPU 사용 불가", "utilization": 0}]
             vram_info = [{"id": 0, "used_mb": 0, "total_mb": 0, "percent": 0}]
         
         return {

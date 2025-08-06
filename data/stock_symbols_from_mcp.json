@@ -1,0 +1,142 @@
+{
+  "metadata": {
+    "generated_at": "1754455300.6809685",
+    "total_symbols": 21,
+    "source": "MCP Server - load_all_tickers",
+    "description": "MCP 서버의 load_all_tickers 도구를 통해 가져온 전체 주식 종목 목록",
+    "fields": {
+      "symbol": "종목코드",
+      "korean_name": "한글 종목명",
+      "korean_short_name": "한글 종목약명",
+      "english_name": "영문 종목명"
+    }
+  },
+  "symbols": [
+    {
+      "symbol": "005930",
+      "korean_name": "Samsung Electronics",
+      "korean_short_name": "Samsung Electronics",
+      "english_name": "Stock_005930"
+    },
+    {
+      "symbol": "000660",
+      "korean_name": "SK Hynix",
+      "korean_short_name": "SK Hynix",
+      "english_name": "Stock_000660"
+    },
+    {
+      "symbol": "035420",
+      "korean_name": "NAVER",
+      "korean_short_name": "NAVER",
+      "english_name": "Stock_035420"
+    },
+    {
+      "symbol": "051910",
+      "korean_name": "LG Chem",
+      "korean_short_name": "LG Chem",
+      "english_name": "Stock_051910"
+    },
+    {
+      "symbol": "006400",
+      "korean_name": "Samsung SDI",
+      "korean_short_name": "Samsung SDI",
+      "english_name": "Stock_006400"
+    },
+    {
+      "symbol": "035720",
+      "korean_name": "Kakao",
+      "korean_short_name": "Kakao",
+      "english_name": "Stock_035720"
+    },
+    {
+      "symbol": "207940",
+      "korean_name": "Samsung Biologics",
+      "korean_short_name": "Samsung Biologics",
+      "english_name": "Stock_207940"
+    },
+    {
+      "symbol": "068270",
+      "korean_name": "Celltrion",
+      "korean_short_name": "Celltrion",
+      "english_name": "Stock_068270"
+    },
+    {
+      "symbol": "323410",
+      "korean_name": "KakaoBank",
+      "korean_short_name": "KakaoBank",
+      "english_name": "Stock_323410"
+    },
+    {
+      "symbol": "373220",
+      "korean_name": "LG Energy Solution",
+      "korean_short_name": "LG Energy Solution",
+      "english_name": "Stock_373220"
+    },
+    {
+      "symbol": "091990",
+      "korean_name": "셀트리온헬스케어",
+      "korean_short_name": "셀트리온헬스케어",
+      "english_name": "Stock_091990"
+    },
+    {
+      "symbol": "233780",
+      "korean_name": "엔에이치엔",
+      "korean_short_name": "엔에이치엔",
+      "english_name": "Stock_233780"
+    },
+    {
+      "symbol": "086520",
+      "korean_name": "에코프로",
+      "korean_short_name": "에코프로",
+      "english_name": "Stock_086520"
+    },
+    {
+      "symbol": "096770",
+      "korean_name": "SK이노베이션",
+      "korean_short_name": "SK이노베이션",
+      "english_name": "Stock_096770"
+    },
+    {
+      "symbol": "018260",
+      "korean_name": "삼성에스디에스",
+      "korean_short_name": "삼성에스디에스",
+      "english_name": "Stock_018260"
+    },
+    {
+      "symbol": "017670",
+      "korean_name": "SK텔레콤",
+      "korean_short_name": "SK텔레콤",
+      "english_name": "Stock_017670"
+    },
+    {
+      "symbol": "011070",
+      "korean_name": "LG이노텍",
+      "korean_short_name": "LG이노텍",
+      "english_name": "Stock_011070"
+    },
+    {
+      "symbol": "066570",
+      "korean_name": "LG전자",
+      "korean_short_name": "LG전자",
+      "english_name": "Stock_066570"
+    },
+    {
+      "symbol": "034020",
+      "korean_name": "두산에너빌리티",
+      "korean_short_name": "두산에너빌리티",
+      "english_name": "Stock_034020"
+    },
+    {
+      "symbol": "000270",
+      "korean_name": "기아",
+      "korean_short_name": "기아",
+      "english_name": "Stock_000270"
+    },
+    {
+      "symbol": "084650",
+      "korean_name": "랩지노믹스",
+      "korean_short_name": "랩지노믹스",
+      "english_name": "Stock_084650"
+    }
+  ]
+}

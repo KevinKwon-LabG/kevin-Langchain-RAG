@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     port: int = 11040
     debug: bool = True
     log_level: str = "INFO"
+    service_host: str = "1.237.52.240"
+    service_port: int = 11040
+    service_url: str = "http://1.237.52.240:11040"
     
     # =============================================================================
     # Ollama 설정
@@ -35,8 +38,8 @@ class Settings(BaseSettings):
     # =============================================================================
     # 문서 처리 설정
     # =============================================================================
-    chunk_size: int = 500
-    chunk_overlap: int = 100
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
     max_tokens: int = 4000
     upload_folder: str = "data/documents"
     max_file_size: int = 16 * 1024 * 1024  # 16MB
@@ -68,13 +71,13 @@ class Settings(BaseSettings):
     # =============================================================================
     default_use_rag: bool = True
     default_top_k_documents: int = 5
-    default_similarity_threshold: float = 0.7
+    default_similarity_threshold: float = 0.85  # KURE 임베딩 모델에 적합한 엄격한 임계값
     
     # =============================================================================
     # 시스템 프롬프트 설정
     # =============================================================================
-    default_system_prompt: str = "You are a helpful assistant. Answer questions based on the provided context. If you cannot find relevant information in the context, say so clearly."
-    rag_system_prompt: str = "You are a helpful assistant. Use the provided context to answer questions accurately. If the context doesn't contain relevant information, say \"컨텍스트에서 해당 정보를 찾을 수 없습니다.\""
+    default_system_prompt: str = "You are a helpful assistant. Answer questions based on the provided context when available. If the context doesn't contain relevant information, use your general knowledge to provide accurate and helpful answers. Always be informative and helpful."
+    rag_system_prompt: str = "You are a helpful assistant. Use the provided context to answer questions accurately when relevant information is available. If the context doesn't contain relevant information, use your general knowledge to provide accurate and helpful answers. Do not limit yourself to only the provided context."
     
     # =============================================================================
     # 세션 관리 설정
@@ -217,8 +220,8 @@ class Settings(BaseSettings):
     # 시스템 프롬프트 템플릿
     # =============================================================================
     system_prompt_templates: List[Dict[str, str]] = [
-        {"name": "기본", "prompt": "You are a helpful assistant. Answer questions based on the provided context. If you cannot find relevant information in the context, say so clearly."},
-        {"name": "한국어", "prompt": "당신은 도움이 되는 한국어 어시스턴트입니다. 제공된 컨텍스트를 기반으로 질문에 답변하세요. 컨텍스트에서 관련 정보를 찾을 수 없는 경우 명확히 말씀해 주세요."},
+        {"name": "기본", "prompt": "You are a helpful assistant. Answer questions based on the provided context when available. If the context doesn't contain relevant information, use your general knowledge to provide accurate and helpful answers. Always be informative and helpful."},
+        {"name": "한국어", "prompt": "당신은 도움이 되는 한국어 어시스턴트입니다. 제공된 컨텍스트를 기반으로 질문에 답변하세요. 컨텍스트에서 관련 정보를 찾을 수 없는 경우 일반적인 지식을 사용하여 정확하고 도움이 되는 답변을 제공하세요. 항상 유익하고 도움이 되도록 답변하세요."},
         {"name": "코딩", "prompt": "You are a helpful programming assistant. Provide clear, well-documented code examples and explanations. Always consider best practices and security."},
         {"name": "번역", "prompt": "You are a professional translator. Provide accurate and natural translations while preserving the original meaning and context."},
         {"name": "요약", "prompt": "You are a summarization expert. Provide concise, accurate summaries that capture the key points and main ideas."},
@@ -250,6 +253,7 @@ class Settings(BaseSettings):
     log_max_size: int = 10 * 1024 * 1024  # 10MB
     log_backup_count: int = 5
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    log_level: str = "INFO"
     
     # =============================================================================
     # 웹 검색 설정
@@ -302,7 +306,8 @@ class Settings(BaseSettings):
     def _parse_environment_arrays(self):
         """환경 변수에서 배열 형태의 값들을 파싱합니다."""
         # 이제 field_validator를 사용하므로 이 메서드는 더 이상 필요하지 않습니다.
-        pass
+        # 향후 필요시 구현 예정
+        return
     
     def get_available_models(self) -> List[Dict[str, Any]]:
         """사용 가능한 모델 목록을 반환합니다."""
