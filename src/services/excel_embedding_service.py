@@ -85,25 +85,42 @@ class ExcelEmbeddingService:
     def _init_vector_db(self):
         """벡터 DB 초기화"""
         try:
-            # 디렉토리 생성 및 권한 설정
-            import os
-            os.makedirs(self.vector_db_path, exist_ok=True)
-            
-            self.chroma_client = chromadb.PersistentClient(
-                path=self.vector_db_path,
-                settings=Settings(anonymized_telemetry=False)
-            )
+            # Chroma DB 클라이언트 생성
+            self.chroma_client = self._create_chroma_client()
             
             # 엑셀 문서용 컬렉션 생성
             self.collection = self.chroma_client.get_or_create_collection(
-                name="documents",
-                metadata={"description": "문서 임베딩 컬렉션 (통합)"}
+                name=settings.chroma_collection_name,
+                metadata=settings.chroma_collection_metadata
             )
-            logger.info("엑셀 벡터 DB 초기화 완료")
+            logger.info(f"엑셀 벡터 DB 초기화 완료 (모드: {settings.chroma_mode})")
             
         except Exception as e:
             logger.error(f"엑셀 벡터 DB 초기화 실패: {e}")
             raise
+    
+    def _create_chroma_client(self):
+        """Chroma DB 클라이언트 생성"""
+        config = settings.get_chroma_client_config()
+        
+        if config["mode"] == "local":
+            # 로컬 모드
+            os.makedirs(config["path"], exist_ok=True)
+            return chromadb.PersistentClient(
+                path=config["path"],
+                settings=chromadb.config.Settings(**config["settings"])
+            )
+        elif config["mode"] == "http":
+            # HTTP 모드 (외부 서버)
+            return chromadb.HttpClient(
+                host=config["host"],
+                port=config["port"],
+                username=config["username"],
+                password=config["password"],
+                ssl=config["ssl"]
+            )
+        else:
+            raise ValueError(f"지원하지 않는 Chroma DB 모드입니다: {config['mode']}")
     
     def _init_korean_analyzers(self):
         """한국어 형태소 분석기 초기화"""

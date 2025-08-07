@@ -164,4 +164,101 @@ async def get_all_presets():
         }
     except Exception as e:
         logger.error(f"프리셋 조회 중 오류: {e}")
-        raise HTTPException(status_code=500, detail=f"프리셋 조회 실패: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"프리셋 조회 실패: {str(e)}")
+
+@router.get("/api/settings/mcp-decision-methods")
+async def get_mcp_decision_methods():
+    """
+    MCP 서비스 사용 결정 방식을 반환합니다.
+    
+    Returns:
+        MCP 결정 방식 목록
+    """
+    try:
+        from src.config.settings import get_settings
+        settings = get_settings()
+        
+        return {
+            "current_method": settings.mcp_decision_method,
+            "available_methods": settings.mcp_decision_methods,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"MCP 결정 방식 조회 중 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"MCP 결정 방식 조회 실패: {str(e)}")
+
+@router.post("/api/settings/mcp-decision-method")
+async def set_mcp_decision_method(method: str, session_id: str = None):
+    """
+    MCP 서비스 사용 결정 방식을 설정합니다.
+    
+    Args:
+        method: 결정 방식 ("keyword" 또는 "ai")
+        session_id: 세션 ID (None인 경우 전역 설정)
+        
+    Returns:
+        설정 결과
+    """
+    try:
+        from src.services.mcp_client_service import mcp_client_service
+        
+        # MCP 클라이언트 서비스의 결정 방식 변경
+        mcp_client_service.set_mcp_decision_method(method, session_id)
+        
+        if session_id:
+            logger.info(f"세션 {session_id}의 MCP 결정 방식이 {method}로 변경되었습니다")
+        else:
+            logger.info(f"전역 MCP 결정 방식이 {method}로 변경되었습니다")
+        
+        return {
+            "success": True,
+            "message": f"MCP 결정 방식이 {method}로 변경되었습니다",
+            "current_method": mcp_client_service.get_mcp_decision_method(session_id),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"MCP 결정 방식 설정 중 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"MCP 결정 방식 설정 실패: {str(e)}")
+
+@router.get("/api/settings/mcp-decision-method")
+async def get_mcp_decision_method(session_id: str = None):
+    """
+    현재 MCP 서비스 사용 결정 방식을 반환합니다.
+    
+    Args:
+        session_id: 세션 ID (None인 경우 전역 설정 반환)
+        
+    Returns:
+        현재 결정 방식
+    """
+    try:
+        from src.services.mcp_client_service import mcp_client_service
+        
+        return {
+            "current_method": mcp_client_service.get_mcp_decision_method(session_id),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"현재 MCP 결정 방식 조회 중 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"현재 MCP 결정 방식 조회 실패: {str(e)}")
+
+@router.get("/api/settings/mcp-server-status")
+async def get_mcp_server_status():
+    """
+    MCP 서버 연결 상태를 확인합니다.
+    
+    Returns:
+        MCP 서버 상태 정보
+    """
+    try:
+        from src.services.mcp_client_service import mcp_client_service
+        
+        server_status = await mcp_client_service.check_mcp_server_status()
+        
+        return {
+            "server_status": server_status,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"MCP 서버 상태 확인 중 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"MCP 서버 상태 확인 실패: {str(e)}") 

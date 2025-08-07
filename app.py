@@ -47,6 +47,9 @@ def create_custom_log_config(debug_mode: bool):
                 },
                 "access": {
                     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                },
+                "mcp": {
+                    "format": "%(asctime)s - [MCP] - %(levelname)s - %(message)s"
                 }
             },
             "handlers": {
@@ -60,8 +63,8 @@ def create_custom_log_config(debug_mode: bool):
                     "class": "logging.handlers.RotatingFileHandler",
                     "filename": "app_debug.log",
                     "mode": "a",
-                    "maxBytes": 10*1024*1024,  # 10MB
-                    "backupCount": 5,
+                    "maxBytes": 50*1024*1024,  # 50MB로 증가 (MCP 응답 로그를 위해)
+                    "backupCount": 10,  # 백업 파일 수도 증가
                     "encoding": "utf-8"
                 },
                 "access": {
@@ -74,8 +77,8 @@ def create_custom_log_config(debug_mode: bool):
                     "class": "logging.handlers.RotatingFileHandler",
                     "filename": "app_debug.log",
                     "mode": "a",
-                    "maxBytes": 10*1024*1024,  # 10MB
-                    "backupCount": 5,
+                    "maxBytes": 50*1024*1024,  # 50MB로 증가 (MCP 응답 로그를 위해)
+                    "backupCount": 10,  # 백업 파일 수도 증가
                     "encoding": "utf-8"
                 }
             },
@@ -103,6 +106,11 @@ def create_custom_log_config(debug_mode: bool):
                 "watchfiles": {
                     "handlers": ["default", "file"],
                     "level": "WARNING",
+                    "propagate": False
+                },
+                "src.services.mcp_client_service": {
+                    "handlers": ["default", "file"],
+                    "level": "DEBUG",
                     "propagate": False
                 }
             },
@@ -176,8 +184,8 @@ def setup_logging(debug_mode: bool):
                 RotatingFileHandler(
                     'app_debug.log', 
                     mode='a', 
-                    maxBytes=10*1024*1024,  # 10MB
-                    backupCount=5,
+                    maxBytes=50*1024*1024,  # 50MB로 증가 (MCP 응답 로그를 위해)
+                    backupCount=10,  # 백업 파일 수도 증가
                     encoding='utf-8'
                 )
             ],

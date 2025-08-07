@@ -202,14 +202,28 @@ ollama/
 ## 🔧 설정
 
 ### **환경 변수** (`env.settings`)
-- `ollama_base_url`: Ollama 서버 URL
-- `embedding_model_name`: 임베딩 모델명
-- `chroma_persist_directory`: 벡터 DB 저장 경로
-- `huggingface_api_key`: HuggingFace API 키
+
+#### **Chroma DB 설정**
+- `CHROMA_MODE`: Chroma DB 모드 (`local` 또는 `http`)
+- `CHROMA_PERSIST_DIRECTORY`: 로컬 저장 경로 (기본값: `data/vectorstore`)
+- `CHROMA_HOST`: 외부 서버 호스트 (기본값: `localhost`)
+- `CHROMA_PORT`: 외부 서버 포트 (기본값: `8000`)
+- `CHROMA_USERNAME`: 인증 사용자명 (선택사항)
+- `CHROMA_PASSWORD`: 인증 비밀번호 (선택사항)
+- `CHROMA_SSL`: SSL 사용 여부 (기본값: `false`)
+- `CHROMA_COLLECTION_NAME`: 컬렉션 이름 (기본값: `documents`)
+
+#### **임베딩 설정**
+- `EMBEDDING_MODEL_NAME`: 임베딩 모델명 (기본값: `nlpai-lab/KURE-v1`)
+- `EMBEDDING_DEVICE`: 임베딩 디바이스 (기본값: `cpu`)
+- `HUGGINGFACE_API_KEY`: HuggingFace API 키 (선택사항)
+
+#### **Ollama 설정**
+- `OLLAMA_BASE_URL`: Ollama 서버 URL
 
 ### **주요 설정**
-- **임베딩 모델**: BM-K/KURE (한국어 특화)
-- **벡터 DB**: ChromaDB (로컬 저장)
+- **임베딩 모델**: nlpai-lab/KURE-v1 (한국어 특화)
+- **벡터 DB**: ChromaDB (로컬 또는 외부 서버)
 - **문서 청크 크기**: 1000 토큰
 - **청크 오버랩**: 200 토큰
 - **워드 임베딩**: 
@@ -253,7 +267,38 @@ python app.py --debug
 python app.py
 ```
 
-### **4. 웹 인터페이스 접속**
+### **4. Chroma DB 설정 (선택사항)**
+
+#### **로컬 Chroma DB 사용 (기본값)**
+```bash
+# env.settings 파일에서 설정
+CHROMA_MODE=local
+CHROMA_PERSIST_DIRECTORY=data/vectorstore
+```
+
+#### **외부 Chroma DB 서버 사용**
+```bash
+# env.settings 파일에서 설정
+CHROMA_MODE=http
+CHROMA_HOST=your-chroma-server.com
+CHROMA_PORT=8000
+CHROMA_USERNAME=your_username
+CHROMA_PASSWORD=your_password
+CHROMA_SSL=true
+```
+
+#### **Docker로 Chroma DB 실행**
+```bash
+# Chroma DB 서버 실행
+docker run -p 8000:8000 chromadb/chroma
+
+# 환경 변수 설정
+export CHROMA_MODE=http
+export CHROMA_HOST=localhost
+export CHROMA_PORT=8000
+```
+
+### **5. 웹 인터페이스 접속**
 - URL: `http://1.237.52.240:11040`
 - API 문서: `http://1.237.52.240:11040/docs`
 
@@ -270,6 +315,18 @@ python app.py
 - 벡터화를 통한 지식 베이스 구축
 
 ## 🧪 테스트
+
+### **Chroma DB 설정 테스트**
+```bash
+# Chroma DB 연결 및 설정 테스트
+python scripts/test_chroma_config.py
+```
+
+### **MCP 로깅 테스트**
+```bash
+# MCP 도구 호출 및 응답 로깅 테스트
+python scripts/test_mcp_logging.py
+```
 
 ### **워드 임베딩 테스트**
 ```bash
@@ -290,6 +347,25 @@ curl -X GET "http://1.237.52.240:11040/api/word-embedding/stats"
 - `app_debug.log`: 애플리케이션 디버그 로그
 - `logs/mcp_client.log`: MCP 클라이언트 로그
 - `logs/weather_test.log`: 날씨 서비스 테스트 로그
+
+### **MCP 로깅 기능**
+MCP 도구 사용 시 다음 정보가 로그에 기록됩니다:
+
+#### **로그 형식**
+- `[MCP 사용 결정]`: MCP 서비스 사용 여부 결정 과정
+- `[MCP 도구 호출]`: MCP 도구 호출 시 파라미터 (앞 100자)
+- `[MCP 도구 응답]`: MCP 도구 응답 (앞 20자)
+- `[MCP 키워드 매칭]`: 키워드 기반 매칭 결과
+- `[MCP AI 결정]`: AI 기반 결정 과정
+
+#### **예시 로그**
+```
+[MCP 사용 결정] 결정 방식: keyword, 질문: 서울 날씨 어때?...
+[MCP 키워드 매칭] 날씨 키워드 발견: ['날씨']
+[MCP 날씨 요청] 사용자 프롬프트: 서울 날씨 어때?...
+[MCP 도구 호출] 도구: get_current_weather, 파라미터: {"city": "서울"}...
+[MCP 도구 응답] 도구: get_current_weather, 응답: {"success": true, "result":...
+```
 
 ### **헬스 체크**
 - 시스템 상태 모니터링

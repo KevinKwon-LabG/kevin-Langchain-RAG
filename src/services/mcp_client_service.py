@@ -15,6 +15,7 @@ import httpx
 import aiohttp
 from langchain.schema import Document
 from langchain.prompts import PromptTemplate
+from langchain_ollama import OllamaLLM
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,11 @@ class ConversationContext:
     current_request: str
     missing_params: List[str] = None
     is_waiting_for_params: bool = False
+    # MCP 요청 대기 상태 관리
+    weather_request_pending: bool = False
+    stock_request_pending: bool = False
+    pending_location: Optional[str] = None
+    pending_stock_symbol: Optional[str] = None
 
 class MCPClientService:
     """
@@ -50,23 +56,181 @@ class MCPClientService:
         
         self.session_contexts: Dict[str, ConversationContext] = {}
         
+        # 세션별 MCP 결정 방식 저장소
+        self.session_mcp_decision_methods: Dict[str, str] = {}
+        
         # HTTP 클라이언트 설정
         self.timeout = 30
         self.max_retries = 3
+        
+        # MCP 결정 방식 설정 (기본값: AI 기반)
+        self.mcp_decision_method = getattr(settings, 'mcp_decision_method', 'ai')
         
         # 주식 종목 매핑 초기화 (애플리케이션 시작 시 한 번만 로드)
         self._stock_mapping_cache = None
         self._stock_reverse_mapping_cache = None
         self._initialize_stock_mapping()
         
-        logger.info(f"MCP 클라이언트 서비스 초기화 - 서버: {self.mcp_server_url}")
+        logger.info(f"MCP 클라이언트 서비스 초기화 - 서버: {self.mcp_server_url}, 결정방식: {self.mcp_decision_method}")
     
+    def set_mcp_decision_method(self, method: str, session_id: str = None):
+        """
+        MCP 서비스 사용 결정 방식을 설정합니다.
+        
+        Args:
+            method: 결정 방식 ('keyword' 또는 'ai')
+            session_id: 세션 ID (None인 경우 전역 설정)
+        """
+        if method in ['keyword', 'ai']:
+            if session_id:
+                # 세션별 설정
+                self.session_mcp_decision_methods[session_id] = method
+                logger.info(f"세션 {session_id}의 MCP 결정 방식 변경: {method}")
+            else:
+                # 전역 설정
+                self.mcp_decision_method = method
+                logger.info(f"전역 MCP 결정 방식 변경: {method}")
+        else:
+            logger.warning(f"지원하지 않는 MCP 결정 방식: {method}. 기본값 'ai' 사용")
+            if session_id:
+                self.session_mcp_decision_methods[session_id] = 'ai'
+            else:
+                self.mcp_decision_method = 'ai'
+    
+    def get_mcp_decision_method(self, session_id: str = None) -> str:
+        """
+        현재 MCP 서비스 사용 결정 방식을 반환합니다.
+        
+        Args:
+            session_id: 세션 ID (None인 경우 전역 설정 반환)
+            
+        Returns:
+            str: 현재 결정 방식 ('keyword' 또는 'ai')
+        """
+        if session_id and session_id in self.session_mcp_decision_methods:
+            return self.session_mcp_decision_methods[session_id]
+        return self.mcp_decision_method
+    
+    def _should_clear_pending_state_by_ai(self, user_input: str, model_name: str = None) -> bool:
+        """
+        AI 모델을 사용하여 대화 주제가 변경되었는지 확인합니다.
+        
+        Args:
+            user_input: 사용자 입력
+            model_name: 사용할 AI 모델명 (None인 경우 기본 모델 사용)
+            
+        Returns:
+            bool: 대화 주제가 변경되었으면 True, 아니면 False
+        """
+        try:
+            from src.config.settings import get_settings
+            settings = get_settings()
+            
+            # 사용할 모델 결정
+            target_model = model_name or settings.default_model
+            logger.info(f"[대화 주제 변경 감지] 모델: {target_model}, 입력: {user_input}")
+            
+            # AI 결정을 위한 프롬프트 생성
+            decision_prompt = f"""현재 사용자가 MCP 서비스(날씨, 주식 정보) 요청 대기 상태입니다.
+
+사용자 입력: "{user_input}"
+
+이 입력이 다음 중 하나에 해당하는지 판단해주세요:
+1. 도시명, 주식 종목명, 종목 코드 6자리가 포함되어 있는 경우)
+2. 대화 주제를 완전히 다른 것으로 바꾸려는 경우(위 1번과 관련 없는 경우)
+
+답변은 반드시 "CONTINUE" 또는 "CHANGE"로만 해주세요. 설명은 필요하지 않습니다.
+- 날씨/주식 정보 요청 계속: "CONTINUE"
+- 대화 주제 변경: "CHANGE"
+"""
+
+            # AI 모델을 사용하여 결정
+            try:
+                # 방법 1: LangChain OllamaLLM 시도
+                logger.info(f"[대화 주제 변경 감지] LangChain OllamaLLM 방식 시도")
+                llm = OllamaLLM(
+                    model=target_model,
+                    base_url=settings.ollama_base_url,
+                    timeout=settings.ollama_timeout
+                )
+                response = llm.invoke(decision_prompt)
+                logger.info(f"[대화 주제 변경 감지] LangChain 방식 성공, 응답: {str(response)}")
+                
+            except Exception as e:
+                logger.warning(f"[대화 주제 변경 감지] LangChain 방식 실패: {e}")
+                
+                # 방법 2: 직접 Ollama API 호출
+                try:
+                    logger.info(f"[대화 주제 변경 감지] 직접 Ollama API 호출 방식 시도")
+                    import requests
+                    
+                    ollama_response = requests.post(
+                        f"{settings.ollama_base_url}/api/generate",
+                        json={
+                            "model": target_model,
+                            "prompt": decision_prompt,
+                            "stream": False,
+                            "options": {
+                                "temperature": 0.1,  # 결정을 위해 낮은 temperature 사용
+                                "top_p": 0.9,
+                                "top_k": 40,
+                                "repeat_penalty": 1.1,
+                                "seed": -1
+                            }
+                        },
+                        timeout=settings.ollama_timeout
+                    )
+                    
+                    if ollama_response.status_code == 200:
+                        response_data = ollama_response.json()
+                        response = response_data.get('response', 'CONTINUE')
+                        logger.info(f"[대화 주제 변경 감지] 직접 API 호출 성공, 응답: {str(response)}")
+                    else:
+                        logger.error(f"[대화 주제 변경 감지] Ollama API 오류: HTTP {ollama_response.status_code}")
+                        return False
+                        
+                except Exception as e2:
+                    logger.error(f"[대화 주제 변경 감지] 직접 API 호출 실패: {e2}")
+                    return False
+            
+            # 응답 파싱 및 분석
+            response_text = str(response).strip()
+            
+            # AI 모델 응답에서 특수 토큰들 제거
+            response_text = re.sub(r'\n<end_of_turn>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<end_of_turn>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<|endoftext|>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<|im_end|>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<|im_start|>.*$', '', response_text, flags=re.DOTALL)
+            
+            # 줄바꿈과 공백 정리 후 대문자 변환
+            response_text = re.sub(r'\n+', ' ', response_text)
+            response_text = re.sub(r'\s+', ' ', response_text).strip().upper()
+            
+            logger.info(f"[대화 주제 변경 감지] 정규화된 응답: {response_text}")
+            
+            # 응답 내용 분석
+            if "CHANGE" in response_text:
+                logger.info(f"[대화 주제 변경 감지] 결과: 주제 변경 (CHANGE 포함)")
+                return True
+            else:
+                logger.info(f"[대화 주제 변경 감지] 결과: 주제 계속 (CHANGE 없음)")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ AI 기반 대화 주제 변경 감지 중 오류: {e}")
+            # 오류 발생 시 기본적으로 계속 (안전한 선택)
+            logger.info("🔄 AI 결정 실패, 기본값으로 계속")
+            return False
+
     def _initialize_stock_mapping(self):
         """애플리케이션 시작 시 주식 종목 매핑을 초기화합니다."""
         try:
-            json_file = Path("data/stocks_data.json")
+            from src.config.settings import get_settings
+            settings = get_settings()
+            json_file = Path(settings.stocks_data_file)
             if not json_file.exists():
-                logger.warning("stocks_data.json 파일이 존재하지 않습니다. 기본 매핑을 사용합니다.")
+                logger.warning(f"{settings.stocks_data_file} 파일이 존재하지 않습니다. 기본 매핑을 사용합니다.")
                 self._stock_mapping_cache = self._get_default_stock_mapping()
                 return
             
@@ -154,6 +318,97 @@ class MCPClientService:
         self.update_conversation_context(session_id, context)
         logger.debug(f"세션 {session_id}에 {role} 메시지 추가됨")
     
+    def set_weather_request_pending(self, session_id: str, location: str = None):
+        """
+        날씨 요청 대기 상태를 설정합니다.
+        
+        Args:
+            session_id: 세션 ID
+            location: 대기 중인 위치 정보
+        """
+        context = self.get_conversation_context(session_id)
+        if not context:
+            context = ConversationContext(
+                session_id=session_id,
+                previous_messages=[],
+                current_request=""
+            )
+        
+        context.weather_request_pending = True
+        context.pending_location = location
+        context.stock_request_pending = False  # 다른 요청 상태 해제
+        context.pending_stock_symbol = None
+        
+        self.update_conversation_context(session_id, context)
+        logger.info(f"세션 {session_id}에 날씨 요청 대기 상태 설정: {location}")
+    
+    def set_stock_request_pending(self, session_id: str, stock_symbol: str = None):
+        """
+        주식 요청 대기 상태를 설정합니다.
+        
+        Args:
+            session_id: 세션 ID
+            stock_symbol: 대기 중인 주식 심볼
+        """
+        context = self.get_conversation_context(session_id)
+        if not context:
+            context = ConversationContext(
+                session_id=session_id,
+                previous_messages=[],
+                current_request=""
+            )
+        
+        context.stock_request_pending = True
+        context.pending_stock_symbol = stock_symbol
+        context.weather_request_pending = False  # 다른 요청 상태 해제
+        context.pending_location = None
+        
+        self.update_conversation_context(session_id, context)
+        logger.info(f"세션 {session_id}에 주식 요청 대기 상태 설정: {stock_symbol}")
+    
+    def clear_pending_state(self, session_id: str):
+        """
+        모든 대기 상태를 해제합니다.
+        
+        Args:
+            session_id: 세션 ID
+        """
+        context = self.get_conversation_context(session_id)
+        if context:
+            context.weather_request_pending = False
+            context.stock_request_pending = False
+            context.pending_location = None
+            context.pending_stock_symbol = None
+            
+            self.update_conversation_context(session_id, context)
+            logger.info(f"세션 {session_id}의 모든 대기 상태 해제")
+    
+    def get_pending_state(self, session_id: str) -> Dict[str, Any]:
+        """
+        현재 대기 상태를 반환합니다.
+        
+        Args:
+            session_id: 세션 ID
+            
+        Returns:
+            Dict: 대기 상태 정보
+        """
+        context = self.get_conversation_context(session_id)
+        if not context:
+            return {
+                "weather_request_pending": False,
+                "stock_request_pending": False,
+                "pending_location": None,
+                "pending_stock_symbol": None
+            }
+        
+        return {
+            "weather_request_pending": context.weather_request_pending,
+            "stock_request_pending": context.stock_request_pending,
+            "pending_location": context.pending_location,
+            "pending_stock_symbol": context.pending_stock_symbol
+        }
+    
     async def _make_mcp_request(self, endpoint: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         MCP 서버에 요청을 보냅니다.
@@ -199,22 +454,37 @@ class MCPClientService:
         else:
             request_data = data
         
+        # MCP 도구 호출 로그 기록 (전체 파라미터 표시)
+        logger.info(f"[MCP 도구 호출] 도구: {tool_name}")
+        logger.info(f"[MCP 도구 호출] URL: {url}")
+        logger.info(f"[MCP 도구 호출] 파라미터:")
+        logger.info(json.dumps(request_data, ensure_ascii=False, indent=2))
+        
         for attempt in range(self.max_retries):
             try:
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
                     async with session.post(url, json=request_data) as response:
                         if response.status == 200:
                             result = await response.json()
-                            logger.debug(f"MCP 요청 성공: {endpoint}")
+                            
+                            # MCP 응답 로그 기록 (전체 응답 표시)
+                            response_str = json.dumps(result, ensure_ascii=False, indent=2)
+                            logger.info(f"[MCP 도구 응답] 도구: {tool_name}")
+                            logger.info(f"[MCP 도구 응답] 상태 코드: {response.status}")
+                            logger.info(f"[MCP 도구 응답] 응답 내용:")
+                            logger.info(response_str)
+                            
                             return {
                                 "success": True,
                                 "data": result
                             }
                         else:
-                            logger.warning(f"MCP 요청 실패 (시도 {attempt + 1}): {response.status}")
+                            error_msg = f"MCP 요청 실패 (시도 {attempt + 1}): {response.status}"
+                            logger.warning(f"[MCP 도구 오류] 도구: {tool_name}, {error_msg}")
                             
             except Exception as e:
-                logger.warning(f"MCP 요청 오류 (시도 {attempt + 1}): {e}")
+                error_msg = f"MCP 요청 오류 (시도 {attempt + 1}): {e}"
+                logger.warning(f"[MCP 도구 오류] 도구: {tool_name}, {error_msg}")
                 
             if attempt < self.max_retries - 1:
                 await asyncio.sleep(1)  # 재시도 전 대기
@@ -226,18 +496,29 @@ class MCPClientService:
         # 파일에서 도시 목록 로드
         korean_cities = self._load_korean_cities() # 한국 도시 목록 (weather_cities.csv) 파일에 있으며, get_weather_cities.py 파일에서 생성됨
         
+        logger.info(f"도시 매칭 시작 - 프롬프트: '{prompt}'")
+        logger.info(f"로드된 도시 목록 개수: {len(korean_cities)}개")
+        
         for city in korean_cities:
             if city in prompt:
+                logger.info(f"✅ 도시 매칭 성공: '{city}' - 프롬프트에서 발견됨")
                 return city
         
+        logger.warning(f"❌ 도시 매칭 실패 - 프롬프트에서 도시를 찾을 수 없음: '{prompt}'")
         return None
     
     def _load_korean_cities(self) -> List[str]:
         """저장된 파일에서 한국 도시 목록을 로드합니다."""
         try:
+            from src.config.settings import get_settings
+            settings = get_settings()
+            
             # 먼저 weather_cities.csv 파일 시도
-            csv_file = Path("data/weather_cities.csv")
+            csv_file = Path(settings.weather_cities_csv_file)
+            logger.info(f"CSV 파일 경로 확인: {csv_file.absolute()}")
+            
             if csv_file.exists():
+                logger.info(f"✅ CSV 파일 발견: {csv_file}")
                 import csv
                 cities = []
                 with open(csv_file, 'r', encoding='utf-8') as f:
@@ -248,47 +529,50 @@ class MCPClientService:
                             cities.append(city_name)
                 
                 if cities:
-                    logger.debug(f"CSV 파일에서 도시 목록 로드 완료: {len(cities)}개 도시")
+                    logger.info(f"✅ CSV 파일에서 도시 목록 로드 완료: {len(cities)}개 도시")
+                    logger.debug(f"로드된 도시 목록 (처음 10개): {cities[:10]}")
                     return cities
+                else:
+                    logger.warning("CSV 파일이 비어있거나 유효한 도시 데이터가 없습니다.")
+            else:
+                logger.warning(f"❌ CSV 파일이 존재하지 않음: {csv_file}")
             
             # CSV 파일이 없거나 비어있으면 JSON 파일 시도
-            json_file = Path("data/korean_cities.json")
+            json_file = Path(settings.weather_cities_json_file)
+            logger.info(f"JSON 파일 경로 확인: {json_file.absolute()}")
+            
             if json_file.exists():
+                logger.info(f"✅ JSON 파일 발견: {json_file}")
                 with open(json_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
                 cities = data.get("cities", [])
                 if cities:
-                    logger.debug(f"JSON 파일에서 도시 목록 로드 완료: {len(cities)}개 도시")
+                    logger.info(f"✅ JSON 파일에서 도시 목록 로드 완료: {len(cities)}개 도시")
+                    logger.debug(f"로드된 도시 목록 (처음 10개): {cities[:10]}")
                     return cities
+                else:
+                    logger.warning("JSON 파일이 비어있거나 유효한 도시 데이터가 없습니다.")
+            else:
+                logger.warning(f"❌ JSON 파일이 존재하지 않음: {json_file}")
             
             # 파일이 없거나 비어있으면 기본 도시 목록 사용
             logger.warning("도시 목록 파일이 존재하지 않거나 비어있습니다. 기본 도시 목록을 사용합니다.")
-            return self._get_default_cities()
+            default_cities = self._get_default_cities()
+            logger.info(f"기본 도시 목록 사용: {len(default_cities)}개 도시")
+            return default_cities
                 
         except Exception as e:
             logger.error(f"도시 목록 파일 로드 실패: {e}")
-            return self._get_default_cities()
+            default_cities = self._get_default_cities()
+            logger.info(f"오류로 인해 기본 도시 목록 사용: {len(default_cities)}개 도시")
+            return default_cities
     
     def _get_default_cities(self) -> List[str]:
         """기본 도시 목록을 반환합니다. (파일이 없거나 로드 실패 시 사용)"""
-        return [
-            "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
-            "수원", "성남", "의정부", "안양", "부천", "광명", "평택", "동두천",
-            "안산", "고양", "과천", "구리", "남양주", "오산", "시흥", "군포",
-            "의왕", "하남", "용인", "파주", "이천", "안성", "김포", "화성",
-            "광주", "여주", "양평", "양주", "포천", "연천", "가평",
-            "춘천", "원주", "강릉", "태백", "속초", "삼척", "동해", "횡성",
-            "영월", "평창", "정선", "철원", "화천", "양구", "인제", "고성",
-            "양양", "홍천", "태안", "당진", "서산", "논산", "계룡", "공주",
-            "보령", "아산", "서천", "천안", "예산", "금산", "부여",
-            "청양", "홍성", "제주", "서귀포", "포항", "경주", "김천", "안동",
-            "구미", "영주", "영천", "상주", "문경", "경산", "군산", "익산",
-            "정읍", "남원", "김제", "완주", "진안", "무주", "장수", "임실",
-            "순창", "고창", "부안", "여수", "순천", "나주", "광양", "담양",
-            "곡성", "구례", "고흥", "보성", "화순", "장흥", "강진", "해남",
-            "영암", "무안", "함평", "영광", "장성", "완도", "진도", "신안"
-        ]
+        from src.config.settings import get_settings
+        settings = get_settings()
+        return settings.default_cities
     
     def _extract_stock_code_from_prompt(self, prompt: str) -> Optional[str]:
         """프롬프트에서 주식 종목 코드를 추출합니다."""
@@ -323,51 +607,236 @@ class MCPClientService:
     
     def _get_default_stock_mapping(self) -> Dict[str, str]:
         """기본 주식 종목 매핑을 반환합니다. (파일이 없거나 로드 실패 시 사용)"""
-        return {
-            "삼성전자": "005930",
-            "SK하이닉스": "000660",
-            "NAVER": "035420",
-            "카카오": "035720",
-            "LG에너지솔루션": "373220",
-            "삼성바이오로직스": "207940",
-            "현대차": "005380",
-            "기아": "000270",
-            "POSCO홀딩스": "005490",
-            "삼성SDI": "006400",
-            "LG화학": "051910",
-            "현대모비스": "012330",
-            "KB금융": "105560",
-            "신한지주": "055550",
-            "하나금융지주": "086790",
-            "우리금융지주": "316140",
-            "LG전자": "066570",
-            "삼성물산": "028260",
-            "SK이노베이션": "096770",
-            "아모레퍼시픽": "090430"
-        }
+        from src.config.settings import get_settings
+        settings = get_settings()
+        return settings.default_stock_mapping
     
-    async def process_weather_request(self, user_prompt: str, session_id: Optional[str] = None) -> Tuple[str, bool]:
+    async def _extract_search_query_from_prompt(self, user_prompt: str, model_name: str = None) -> str:
+        """
+        AI 모델을 사용하여 사용자 프롬프트에서 적절한 검색어를 추출합니다.
+        
+        Args:
+            user_prompt: 사용자 프롬프트
+            model_name: 사용할 AI 모델명
+            
+        Returns:
+            str: 추출된 검색어
+        """
+        try:
+            from src.config.settings import get_settings
+            settings = get_settings()
+            
+            # 사용할 모델 결정
+            target_model = model_name or settings.default_model
+            logger.info(f"[검색어 추출] 모델: {target_model}, 프롬프트: {user_prompt}")
+            
+            # 검색어 추출을 위한 프롬프트 생성
+            extraction_prompt = f"""다음 사용자 질문에서 웹 검색에 적합한 핵심 검색어를 추출해주세요.
+
+사용자 질문: "{user_prompt}"
+
+검색어 추출 규칙:
+1. 질문의 핵심 주제나 키워드를 추출
+2. 불필요한 조사, 문장 부호, "알려줘", "검색해줘" 등의 요청어는 제거
+3. 검색에 적합한 명사나 명사구 위주로 추출
+4. 2-5개의 핵심 단어로 구성
+5. 한국어로 추출
+6. 원본 질문과 다른 간결한 검색어로 추출
+
+예시:
+- "AI의 정의에 대해 웹에서 검색해서 요약해줘" → "AI 정의"
+- "최신 인공지능 기술 동향을 알려줘" → "인공지능 기술 동향"
+- "2024년 한국 경제 전망은?" → "2024년 한국 경제 전망"
+- "파이썬 프로그래밍 기초를 배우고 싶어" → "파이썬 프로그래밍 기초"
+- "최신 경제 뉴스를 알려줘" → "최신 경제 뉴스"
+- "OpenAI 최신 기사를 찾아줘" → "OpenAI 최신 기사"
+
+추출된 검색어만 답변해주세요. 설명이나 따옴표는 필요하지 않습니다."""
+
+            # AI 모델을 사용하여 검색어 추출
+            try:
+                # 방법 1: LangChain OllamaLLM 시도
+                logger.info(f"[검색어 추출] LangChain OllamaLLM 방식 시도")
+                llm = OllamaLLM(
+                    model=target_model,
+                    base_url=settings.ollama_base_url,
+                    timeout=settings.ollama_timeout
+                )
+                response = llm.invoke(extraction_prompt)
+                logger.info(f"[검색어 추출] LangChain 방식 성공, 응답: {str(response)}")
+                
+            except Exception as e:
+                logger.warning(f"[검색어 추출] LangChain 방식 실패: {e}")
+                
+                # 방법 2: 직접 Ollama API 호출
+                try:
+                    logger.info(f"[검색어 추출] 직접 Ollama API 호출 방식 시도")
+                    import requests
+                    
+                    ollama_response = requests.post(
+                        f"{settings.ollama_base_url}/api/generate",
+                        json={
+                            "model": target_model,
+                            "prompt": extraction_prompt,
+                            "stream": False,
+                            "options": {
+                                "temperature": 0.1,  # 일관성을 위해 낮은 temperature 사용
+                                "top_p": 0.9,
+                                "top_k": 40,
+                                "repeat_penalty": 1.1,
+                                "seed": -1
+                            }
+                        },
+                        timeout=settings.ollama_timeout
+                    )
+                    
+                    if ollama_response.status_code == 200:
+                        response_data = ollama_response.json()
+                        response = response_data.get('response', user_prompt)
+                        logger.info(f"[검색어 추출] 직접 API 호출 성공, 응답: {str(response)}")
+                    else:
+                        logger.error(f"[검색어 추출] Ollama API 오류: HTTP {ollama_response.status_code}")
+                        return user_prompt
+                        
+                except Exception as e2:
+                    logger.error(f"[검색어 추출] 직접 API 호출 실패: {e2}")
+                    return user_prompt
+            
+            # 응답 정리
+            extracted_query = str(response).strip()
+            
+            # 응답에서 불필요한 문자 제거
+            extracted_query = re.sub(r'["""]', '', extracted_query).strip()
+            
+            # AI 모델 응답에서 특수 토큰들 제거
+            extracted_query = re.sub(r'\n<end_of_turn>.*$', '', extracted_query, flags=re.DOTALL)
+            extracted_query = re.sub(r'<end_of_turn>.*$', '', extracted_query, flags=re.DOTALL)
+            extracted_query = re.sub(r'/end_of_turn.*$', '', extracted_query, flags=re.DOTALL)
+            extracted_query = re.sub(r'<|endoftext|>.*$', '', extracted_query, flags=re.DOTALL)
+            extracted_query = re.sub(r'<|im_end|>.*$', '', extracted_query, flags=re.DOTALL)
+            extracted_query = re.sub(r'<|im_start|>.*$', '', extracted_query, flags=re.DOTALL)
+            
+            # 줄바꿈과 공백 정리
+            extracted_query = re.sub(r'\n+', ' ', extracted_query)
+            extracted_query = re.sub(r'\s+', ' ', extracted_query).strip()
+            
+            # 응답이 너무 길거나 부적절한 경우 원본 프롬프트 사용
+            if len(extracted_query) > 100 or not extracted_query or extracted_query == user_prompt:
+                logger.warning(f"[검색어 추출] 추출된 검색어가 부적절함: '{extracted_query}', 원본 사용")
+                return user_prompt
+            
+            logger.info(f"[검색어 추출] 최종 검색어: '{extracted_query}'")
+            return extracted_query
+                
+        except Exception as e:
+            logger.error(f"❌ 검색어 추출 중 오류: {e}")
+            # 오류 발생 시 원본 프롬프트 사용
+            logger.info("🔄 검색어 추출 실패, 원본 프롬프트 사용")
+            return user_prompt
+    
+    async def process_weather_request(self, user_prompt: str, session_id: Optional[str] = None, model_name: str = None) -> Tuple[str, bool]:
         """
         날씨 요청을 처리합니다.
         
         Args:
             user_prompt: 사용자 프롬프트
             session_id: 세션 ID
+            model_name: AI 모델명 (대화 주제 변경 감지용)
             
         Returns:
             Tuple[str, bool]: (응답 메시지, 완료 여부)
         """
-        logger.info(f"날씨 요청 처리: {user_prompt}")
+        logger.info(f"[MCP 날씨 요청] 사용자 프롬프트: {user_prompt}")
         
         # 세션에 메시지 추가
         if session_id:
             self.add_message_to_context(session_id, "user", user_prompt)
         
+        # 대기 상태 확인
+        pending_state = self.get_pending_state(session_id)
+        
+        # 날씨 요청 대기 상태에서 도시명 입력 처리
+        if pending_state["weather_request_pending"]:
+            logger.info(f"[MCP 날씨 요청] 날씨 요청 대기 상태에서 입력: '{user_prompt}'")
+            
+            # 입력이 도시명인지 확인
+            location = self._extract_location_from_prompt(user_prompt)
+            if location:
+                logger.info(f"[MCP 날씨 요청] ✅ 대기 상태에서 도시명 인식: '{location}'")
+                # 대기 상태 해제
+                self.clear_pending_state(session_id)
+                
+                # MCP 서버에 날씨 요청
+                try:
+                    weather_data = await self._make_mcp_request("weather", {
+                        "location": location,
+                        "query": user_prompt
+                    })
+                    
+                    # 응답 생성
+                    if weather_data.get("success"):
+                        # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                        # 실제 MCP 서버 응답은 weather_data["data"]에 있음
+                        mcp_response = weather_data.get("data", {})
+                        weather_info = mcp_response.get("result", mcp_response)
+                        # 위치 정보를 weather_info에 추가
+                        weather_info["location"] = location
+                        response = self._format_weather_response(weather_info, location)
+                    else:
+                        response = f"죄송합니다. {location}의 날씨 정보를 가져올 수 없습니다."
+                    
+                    # 세션에 응답 추가
+                    if session_id:
+                        self.add_message_to_context(session_id, "assistant", response)
+                    
+                    return response, True
+                    
+                except Exception as e:
+                    logger.error(f"대기 상태에서 날씨 요청 처리 실패: {e}")
+                    if "Connection reset by peer" in str(e) or "Connection refused" in str(e):
+                        response = "🌐 MCP 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요."
+                    else:
+                        response = f"날씨 정보 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
+                    
+                    if session_id:
+                        self.add_message_to_context(session_id, "assistant", response)
+                    
+                    return response, True
+            
+            # 도시명이 아닌 경우 대화 주제 변경 감지
+            if self._should_clear_pending_state_by_ai(user_prompt, model_name):
+                logger.info(f"[MCP 날씨 요청] 대화 주제 변경 감지, 대기 상태 해제")
+                self.clear_pending_state(session_id)
+                response = "네, 다른 주제로 대화를 이어가겠습니다. 무엇을 도와드릴까요?"
+                if session_id:
+                    self.add_message_to_context(session_id, "assistant", response)
+                return response, True
+            
+            # 도시명도 아니고 주제 변경도 아닌 경우, 다시 도시명 요청
+            logger.info(f"[MCP 날씨 요청] 도시명이 아닌 입력, 다시 요청")
+            response = "🌤️ 날씨 정보를 제공하기 위해 도시명을 알려주세요. (예: 서울, 부산, 대구, 인천, 광주, 대전, 울산, 제주 등)"
+            if session_id:
+                self.add_message_to_context(session_id, "assistant", response)
+            return response, False
+        
         try:
             # 위치 정보 추출
+            logger.info(f"날씨 요청에서 위치 정보 추출 시작: '{user_prompt}'")
             location = self._extract_location_from_prompt(user_prompt)
+            
             if not location:
-                location = "서울"  # 기본값
+                # 위치 정보가 없으면 대기 상태 설정
+                logger.info(f"위치 정보 추출 실패, 사용자에게 입력 요청")
+                response = "🌤️ 날씨 정보를 제공하기 위해 도시명을 알려주세요. (예: 서울, 부산, 대구, 인천, 광주, 대전, 울산, 제주 등)"
+                if session_id:
+                    self.set_weather_request_pending(session_id)
+                    self.add_message_to_context(session_id, "assistant", response)
+                return response, False  # 완료되지 않음
+            else:
+                logger.info(f"✅ 위치 정보 추출 성공: '{location}'")
+                # 대기 상태 해제
+                if session_id:
+                    self.clear_pending_state(session_id)
             
             # MCP 서버에 날씨 요청
             weather_data = await self._make_mcp_request("weather", {
@@ -377,7 +846,10 @@ class MCPClientService:
             
             # 응답 생성
             if weather_data.get("success"):
-                weather_info = weather_data.get("data", {})
+                # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                # 실제 MCP 서버 응답은 weather_data["data"]에 있음
+                mcp_response = weather_data.get("data", {})
+                weather_info = mcp_response.get("result", mcp_response)
                 # 위치 정보를 weather_info에 추가
                 weather_info["location"] = location
                 response = self._format_weather_response(weather_info, location)
@@ -386,7 +858,10 @@ class MCPClientService:
             
         except Exception as e:
             logger.error(f"날씨 요청 처리 실패: {e}")
-            response = f"날씨 정보 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
+            if "Connection reset by peer" in str(e) or "Connection refused" in str(e):
+                response = "🌐 MCP 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요."
+            else:
+                response = f"날씨 정보 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
         
         # 세션에 응답 추가
         if session_id:
@@ -491,31 +966,108 @@ class MCPClientService:
             logger.error(f"날씨 응답 포맷팅 실패: {e}")
             return f"{location}의 날씨 정보를 표시할 수 없습니다."
     
-    async def process_stock_request(self, user_prompt: str, session_id: Optional[str] = None) -> Tuple[str, bool]:
+    async def process_stock_request(self, user_prompt: str, session_id: Optional[str] = None, model_name: str = None) -> Tuple[str, bool]:
         """
         주식 요청을 처리합니다.
         
         Args:
             user_prompt: 사용자 프롬프트
             session_id: 세션 ID
+            model_name: AI 모델명 (대화 주제 변경 감지용)
             
         Returns:
             Tuple[str, bool]: (응답 메시지, 완료 여부)
         """
-        logger.info(f"주식 요청 처리: {user_prompt}")
+        logger.info(f"[MCP 주식 요청] 사용자 프롬프트: {user_prompt}")
         
         # 세션에 메시지 추가
         if session_id:
             self.add_message_to_context(session_id, "user", user_prompt)
         
-        try:
-            # 주식 종목 코드 추출
+        # 대기 상태 확인
+        pending_state = self.get_pending_state(session_id)
+        
+        # 주식 요청 대기 상태에서 종목명/종목코드 입력 처리
+        if pending_state["stock_request_pending"]:
+            logger.info(f"[MCP 주식 요청] 주식 요청 대기 상태에서 입력: '{user_prompt}'")
+            
+            # 입력이 종목명/종목코드인지 확인
             stock_code = self._extract_stock_code_from_prompt(user_prompt)
-            if not stock_code:
-                response = "주식 종목 코드나 종목명을 찾을 수 없습니다. 예: '삼성전자 주가' 또는 '005930 주가'"
+            if stock_code:
+                logger.info(f"[MCP 주식 요청] ✅ 대기 상태에서 종목코드 인식: '{stock_code}'")
+                # 대기 상태 해제
+                self.clear_pending_state(session_id)
+                
+                # MCP 서버에 주식 요청
+                try:
+                    stock_data = await self._make_mcp_request("stock", {
+                        "code": stock_code,
+                        "query": user_prompt
+                    })
+                    
+                    # 응답 생성
+                    if stock_data.get("success"):
+                        # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                        # 실제 MCP 서버 응답은 stock_data["data"]에 있음
+                        mcp_response = stock_data.get("data", {})
+                        stock_info = mcp_response.get("result", mcp_response)
+                        # 주식 코드를 응답 데이터에 포함
+                        stock_info["code"] = stock_code
+                        response = self._format_stock_response(stock_info, stock_code)
+                    else:
+                        response = f"죄송합니다. 종목 코드 {stock_code}의 주식 정보를 가져올 수 없습니다."
+                    
+                    # 세션에 응답 추가
+                    if session_id:
+                        self.add_message_to_context(session_id, "assistant", response)
+                    
+                    return response, True
+                    
+                except Exception as e:
+                    logger.error(f"대기 상태에서 주식 요청 처리 실패: {e}")
+                    if "Connection reset by peer" in str(e) or "Connection refused" in str(e):
+                        response = "🌐 MCP 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요."
+                    else:
+                        response = f"주식 정보 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
+                    
+                    if session_id:
+                        self.add_message_to_context(session_id, "assistant", response)
+                    
+                    return response, True
+            
+            # 종목명/종목코드가 아닌 경우 대화 주제 변경 감지
+            if self._should_clear_pending_state_by_ai(user_prompt, model_name):
+                logger.info(f"[MCP 주식 요청] 대화 주제 변경 감지, 대기 상태 해제")
+                self.clear_pending_state(session_id)
+                response = "네, 다른 주제로 대화를 이어가겠습니다. 무엇을 도와드릴까요?"
                 if session_id:
                     self.add_message_to_context(session_id, "assistant", response)
                 return response, True
+            
+            # 종목명/종목코드도 아니고 주제 변경도 아닌 경우, 다시 종목명 요청
+            logger.info(f"[MCP 주식 요청] 종목명/종목코드가 아닌 입력, 다시 요청")
+            response = "📈 주식 정보를 제공하기 위해 종목명이나 종목코드를 알려주세요. (예: 삼성전자, 005930, SK하이닉스, 000660, LG전자, 066570 등)"
+            if session_id:
+                self.add_message_to_context(session_id, "assistant", response)
+            return response, False
+        
+        try:
+            # 주식 종목 코드 추출
+            stock_code = self._extract_stock_code_from_prompt(user_prompt)
+            
+            if not stock_code:
+                # 주식 종목 코드가 없으면 대기 상태 설정
+                logger.info(f"주식 종목 코드 추출 실패, 사용자에게 입력 요청")
+                response = "📈 주식 정보를 제공하기 위해 종목명이나 종목코드를 알려주세요. (예: 삼성전자, 005930, SK하이닉스, 000660, LG전자, 066570 등)"
+                if session_id:
+                    self.set_stock_request_pending(session_id)
+                    self.add_message_to_context(session_id, "assistant", response)
+                return response, False  # 완료되지 않음
+            else:
+                logger.info(f"✅ 주식 종목 코드 추출 성공: '{stock_code}'")
+                # 대기 상태 해제
+                if session_id:
+                    self.clear_pending_state(session_id)
             
             # MCP 서버에 주식 요청
             stock_data = await self._make_mcp_request("stock", {
@@ -525,7 +1077,10 @@ class MCPClientService:
             
             # 응답 생성
             if stock_data.get("success"):
-                stock_info = stock_data.get("data", {})
+                # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                # 실제 MCP 서버 응답은 stock_data["data"]에 있음
+                mcp_response = stock_data.get("data", {})
+                stock_info = mcp_response.get("result", mcp_response)
                 # 주식 코드를 응답 데이터에 포함
                 stock_info["code"] = stock_code
                 response = self._format_stock_response(stock_info, stock_code)
@@ -534,7 +1089,10 @@ class MCPClientService:
             
         except Exception as e:
             logger.error(f"주식 요청 처리 실패: {e}")
-            response = f"주식 정보 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
+            if "Connection reset by peer" in str(e) or "Connection refused" in str(e):
+                response = "🌐 MCP 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요."
+            else:
+                response = f"주식 정보 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
         
         # 세션에 응답 추가
         if session_id:
@@ -624,40 +1182,60 @@ class MCPClientService:
             logger.error(f"주식 응답 포맷팅 실패: {e}")
             return f"종목 코드 {stock_code}의 주식 정보를 표시할 수 없습니다."
     
-    async def process_web_search_request(self, user_prompt: str, session_id: Optional[str] = None) -> Tuple[str, bool]:
+    async def process_web_search_request(self, user_prompt: str, session_id: Optional[str] = None, model_name: str = None) -> Tuple[str, bool]:
         """
         웹 검색 요청을 처리합니다.
         
         Args:
             user_prompt: 사용자 프롬프트
             session_id: 세션 ID
+            model_name: AI 모델명 (검색어 추출에 사용)
             
         Returns:
             Tuple[str, bool]: (응답 메시지, 완료 여부)
         """
-        logger.info(f"웹 검색 요청 처리: {user_prompt}")
+        logger.info(f"[MCP 웹 검색 요청] 사용자 프롬프트: {user_prompt}")
         
         # 세션에 메시지 추가
         if session_id:
             self.add_message_to_context(session_id, "user", user_prompt)
         
         try:
+            # AI 모델을 사용하여 검색어 추출
+            search_query = await self._extract_search_query_from_prompt(user_prompt, model_name)
+            logger.info(f"[MCP 웹 검색] 추출된 검색어: '{search_query}'")
+            
             # MCP 서버에 웹 검색 요청
             search_data = await self._make_mcp_request("search", {
-                "query": user_prompt,
+                "query": search_query,
                 "max_results": 5
             })
             
             # 응답 생성
             if search_data.get("success"):
-                search_results = search_data.get("data", [])
-                response = self._format_search_response(search_results, user_prompt)
+                # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                # 실제 MCP 서버 응답은 search_data["data"]에 있음
+                mcp_response = search_data.get("data", {})
+                result_data = mcp_response.get("result", {})
+                search_results = result_data.get("results", [])
+                
+                # _format_search_response에 전달할 데이터 구조 생성
+                formatted_data = {
+                    "query": search_query,
+                    "results": search_results,
+                    "total_results": result_data.get("total_results", "N/A"),
+                    "search_time": result_data.get("search_time", "N/A")
+                }
+                response = self._format_search_response(formatted_data, user_prompt)
             else:
                 response = f"죄송합니다. '{user_prompt}'에 대한 검색 결과를 가져올 수 없습니다."
             
         except Exception as e:
             logger.error(f"웹 검색 요청 처리 실패: {e}")
-            response = f"웹 검색 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
+            if "Connection reset by peer" in str(e) or "Connection refused" in str(e):
+                response = "🌐 MCP 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요."
+            else:
+                response = f"웹 검색 서비스에 일시적인 오류가 발생했습니다: {str(e)}"
         
         # 세션에 응답 추가
         if session_id:
@@ -720,112 +1298,70 @@ class MCPClientService:
             # 오류 발생 시 원본 텍스트 반환 (길이 제한만 적용)
             return snippet[:200] + "..." if len(snippet) > 200 else snippet
 
-    def _format_search_response(self, search_results: List[Dict[str, Any]], query: str) -> str:
+    def _format_search_response(self, search_data: Dict[str, Any], query: str) -> str:
         """검색 결과를 포맷팅합니다."""
         try:
-            if not search_results:
+            # 디버깅을 위한 로그 추가
+            logger.info(f"[검색 응답 포맷팅] 시작 - search_data 타입: {type(search_data)}")
+            logger.info(f"[검색 응답 포맷팅] search_data 키: {list(search_data.keys()) if isinstance(search_data, dict) else 'N/A'}")
+            logger.info(f"[검색 응답 포맷팅] search_data 내용: {search_data}")
+            
+            # MCP 데이터 구조에 맞게 수정
+            if not search_data or not isinstance(search_data, dict):
+                logger.warning(f"[검색 응답 포맷팅] search_data가 유효하지 않음: {search_data}")
                 return f"'{query}'에 대한 검색 결과를 찾을 수 없습니다."
             
-            # MCP 서버의 실제 응답 형식에 맞게 수정
-            if isinstance(search_results, dict):
-                # MCP 서버 응답 구조: {"success": true, "result": {"success": true, ...}}
-                if "result" in search_results and isinstance(search_results["result"], dict):
-                    result_data = search_results["result"]
-                    
-                    # content 필드가 있는 경우 (이미 포맷된 텍스트)
-                    if "content" in result_data and isinstance(result_data["content"], list):
-                        for content_item in result_data["content"]:
-                            if isinstance(content_item, dict) and content_item.get("type") == "text":
-                                return content_item.get("text", f"'{query}' 검색 결과를 표시할 수 없습니다.")
-                    
-                    # results 필드가 있는 경우
-                    if "results" in result_data and isinstance(result_data["results"], list):
-                        results = result_data["results"]
-                        total_results = result_data.get("total_results", "N/A")
-                        search_time = result_data.get("search_time", "N/A")
-                        
-                        response = f"🔍 '{query}' 검색 결과\n\n"
-                        response += f"📊 총 결과 수: {total_results}개\n"
-                        response += f"⏱️ 검색 시간: {search_time}\n\n"
-                        
-                        for i, result in enumerate(results[:5], 1):
-                            if isinstance(result, dict):
-                                title = result.get("title", "제목 없음")
-                                snippet = result.get("snippet", "내용 없음")
-                                url = result.get("link", result.get("url", ""))
-                                display_link = result.get("display_link", "")
-                            else:
-                                title = str(result)
-                                snippet = "내용 없음"
-                                url = ""
-                                display_link = ""
-                            
-                            response += f"{i}. **{title}**\n"
-                            if url:
-                                response += f"   🔗 <a href=\"{url}\" target=\"_blank\">{url}</a>\n"
-                            
-                            # 스니펫 처리 - 줄바꿈 보존 및 HTML 태그 제거
-                            processed_snippet = self._process_snippet_text(snippet)
-                            response += f"   📝 {processed_snippet}\n"
-                            
-                            if display_link:
-                                response += f"   🌐 {display_link}\n"
-                            response += "\n"
-                        
-                        return response
-                
-                # 기존 형식 지원
-                if isinstance(search_results, list):
-                    results = search_results
+            results = search_data.get("results", [])
+            total_results = search_data.get("total_results", "N/A")
+            search_time = search_data.get("search_time", "N/A")
+            
+            logger.info(f"[검색 응답 포맷팅] results 개수: {len(results) if results else 0}")
+            logger.info(f"[검색 응답 포맷팅] total_results: {total_results}")
+            logger.info(f"[검색 응답 포맷팅] search_time: {search_time}")
+            
+            if not results:
+                logger.warning(f"[검색 응답 포맷팅] results가 비어있음")
+                return f"'{query}'에 대한 검색 결과를 찾을 수 없습니다."
+            
+            response = f"🔍 **'{query}' 검색 결과**\n\n"
+            response += f"📊 총 결과 수: {total_results}개\n"
+            response += f"⏱️ 검색 시간: {search_time}\n\n"
+            
+            for i, result in enumerate(results[:5], 1):
+                if isinstance(result, dict):
+                    title = result.get("title", "제목 없음")
+                    snippet = result.get("snippet", "내용 없음")
+                    url = result.get("link", result.get("url", ""))
+                    display_link = result.get("display_link", "")
                 else:
-                    # 응답이 문자열인 경우 (JSON 문자열)
-                    try:
-                        import json
-                        results = json.loads(str(search_results)) if isinstance(search_results, str) else search_results
-                        if not isinstance(results, list):
-                            results = [results]
-                    except:
-                        # 파싱 실패 시 원본 응답 사용
-                        return f"🔍 '{query}' 검색 결과\n\n{search_results}"
+                    title = str(result)
+                    snippet = "내용 없음"
+                    url = ""
+                    display_link = ""
                 
-                response = f"🔍 '{query}' 검색 결과\n\n"
+                response += f"{i}. **{title}**\n"
+                if url:
+                    response += f"   🔗 <a href=\"{url}\" target=\"_blank\">{url}</a>\n"
                 
-                for i, result in enumerate(results[:5], 1):
-                    if isinstance(result, dict):
-                        title = result.get("title", result.get("name", "제목 없음"))
-                        snippet = result.get("snippet", result.get("description", result.get("summary", "내용 없음")))
-                        url = result.get("url", result.get("link", ""))
-                    else:
-                        title = str(result)
-                        snippet = "내용 없음"
-                        url = ""
-                    
-                    response += f"{i}. **{title}**\n"
-                    
-                    # 스니펫 처리 - 줄바꿈 보존 및 HTML 태그 제거
-                    processed_snippet = self._process_snippet_text(snippet)
-                    response += f"   📝 {processed_snippet}\n"
-                    
-                    if url:
-                        response += f"   🔗 <a href=\"{url}\" target=\"_blank\">{url}</a>\n"
-                    response += "\n"
+                # 스니펫 처리 - 줄바꿈 보존 및 HTML 태그 제거
+                processed_snippet = self._process_snippet_text(snippet)
+                response += f"   📝 {processed_snippet}\n"
                 
-                return response
-            else:
-                # 응답이 문자열인 경우 (JSON 문자열)
-                try:
-                    import json
-                    search_data = json.loads(str(search_results)) if isinstance(search_results, str) else search_results
-                    return self._format_search_response(search_data, query)
-                except:
-                    # 파싱 실패 시 원본 응답 사용
-                    return f"🔍 '{query}' 검색 결과\n\n{search_results}"
+                if display_link:
+                    response += f"   🌐 {display_link}\n"
+                response += "\n"
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"검색 응답 포맷팅 실패: {e}")
+            return f"'{query}' 검색 결과를 표시할 수 없습니다."
             
         except Exception as e:
             logger.error(f"검색 응답 포맷팅 실패: {e}")
             return f"'{query}' 검색 결과를 표시할 수 없습니다."
     
-    async def process_rag_with_mcp(self, user_prompt: str, rag_service, session_id: Optional[str] = None) -> Tuple[str, bool]:
+    async def process_rag_with_mcp(self, user_prompt: str, rag_service, session_id: Optional[str] = None, model_name: str = None) -> Tuple[str, bool]:
         """
         RAG와 MCP를 함께 사용하여 응답을 생성합니다.
         
@@ -833,78 +1369,269 @@ class MCPClientService:
             user_prompt: 사용자 프롬프트
             rag_service: RAG 서비스 인스턴스
             session_id: 세션 ID
+            model_name: AI 모델명 (대화 주제 변경 감지용)
             
         Returns:
             Tuple[str, bool]: (응답 메시지, 완료 여부)
         """
-        logger.info(f"RAG + MCP 요청 처리: {user_prompt}")
+        logger.info(f"[MCP RAG 통합 요청] 사용자 프롬프트: {user_prompt}")
         
         # 세션에 메시지 추가
         if session_id:
             self.add_message_to_context(session_id, "user", user_prompt)
         
-        try:
-            # 1. RAG 컨텍스트 검색
-            context, context_sources = rag_service.retrieve_context(user_prompt, top_k=3)
+        # 대기 상태 확인
+        pending_state = self.get_pending_state(session_id)
+        
+        # 날씨 요청 대기 상태에서 도시명 입력 처리
+        if pending_state["weather_request_pending"]:
+            logger.info(f"[MCP RAG 통합] 날씨 요청 대기 상태에서 입력: '{user_prompt}'")
             
-            # 2. MCP 서비스 요청 (필요한 경우)
-            mcp_data = {}
+            # 입력이 도시명인지 확인
+            location = self._extract_location_from_prompt(user_prompt)
+            if location:
+                logger.info(f"[MCP RAG 통합] ✅ 대기 상태에서 도시명 인식: '{location}'")
+                # 대기 상태 해제
+                self.clear_pending_state(session_id)
+                
+                # MCP 서버에 날씨 요청
+                mcp_data = {}
+                try:
+                    weather_data = await self._make_mcp_request("weather", {
+                        "location": location,
+                        "query": user_prompt
+                    })
+                    if weather_data.get("success"):
+                        weather_info = weather_data.get("data", {})
+                        # 위치 정보를 weather_info에 추가
+                        weather_info["location"] = location
+                        mcp_data["weather"] = weather_info
+                        logger.info(f"[MCP RAG 통합] ✅ 날씨 데이터 성공적으로 추가됨: {location}")
+                    else:
+                        logger.warning(f"[MCP RAG 통합] 날씨 데이터 요청 실패: {weather_data}")
+                except Exception as e:
+                    logger.warning(f"대기 상태에서 날씨 데이터 가져오기 실패: {e}")
+                
+                # RAG 컨텍스트 검색
+                context, context_sources = rag_service.retrieve_context(user_prompt, top_k=3)
+                
+                # 통합 응답 생성
+                logger.info(f"[MCP RAG 통합] 통합 응답 생성 시작 - mcp_data: {list(mcp_data.keys())}")
+                response = self._generate_integrated_response(user_prompt, context, mcp_data)
+                
+                # 세션에 응답 추가
+                if session_id:
+                    self.add_message_to_context(session_id, "assistant", response)
+                
+                return response, True
+            
+            # 도시명이 아닌 경우 대화 주제 변경 감지
+            if self._should_clear_pending_state_by_ai(user_prompt, model_name):
+                logger.info(f"[MCP RAG 통합] 대화 주제 변경 감지, 대기 상태 해제")
+                self.clear_pending_state(session_id)
+                response = "네, 다른 주제로 대화를 이어가겠습니다. 무엇을 도와드릴까요?"
+                if session_id:
+                    self.add_message_to_context(session_id, "assistant", response)
+                return response, True
+            
+            # 도시명도 아니고 주제 변경도 아닌 경우, 다시 도시명 요청
+            logger.info(f"[MCP RAG 통합] 도시명이 아닌 입력, 다시 요청")
+            response = "🌤️ 날씨 정보를 제공하기 위해 도시명을 알려주세요. (예: 서울, 부산, 대구, 인천, 광주, 대전, 울산, 제주 등)"
+            if session_id:
+                self.add_message_to_context(session_id, "assistant", response)
+            return response, False
+        
+        # 주식 요청 대기 상태에서 종목명/종목코드 입력 처리
+        if pending_state["stock_request_pending"]:
+            logger.info(f"[MCP RAG 통합] 주식 요청 대기 상태에서 입력: '{user_prompt}'")
+            
+            # 입력이 종목명/종목코드인지 확인
+            stock_code = self._extract_stock_code_from_prompt(user_prompt)
+            if stock_code:
+                logger.info(f"[MCP RAG 통합] ✅ 대기 상태에서 종목코드 인식: '{stock_code}'")
+                # 대기 상태 해제
+                self.clear_pending_state(session_id)
+                
+                # MCP 서버에 주식 요청
+                mcp_data = {}
+                try:
+                    stock_data = await self._make_mcp_request("stock", {
+                        "code": stock_code,
+                        "query": user_prompt
+                    })
+                    if stock_data.get("success"):
+                        # 주식 코드를 응답 데이터에 포함
+                        stock_response = stock_data.get("data", {})
+                        stock_response["code"] = stock_code  # 주식 코드 추가
+                        mcp_data["stock"] = stock_response
+                        logger.info(f"[MCP RAG 통합] ✅ 주식 데이터 성공적으로 추가됨: {stock_code}")
+                    else:
+                        logger.warning(f"[MCP RAG 통합] 주식 데이터 요청 실패: {stock_data}")
+                except Exception as e:
+                    logger.warning(f"대기 상태에서 주식 데이터 가져오기 실패: {e}")
+                
+                # RAG 컨텍스트 검색
+                context, context_sources = rag_service.retrieve_context(user_prompt, top_k=3)
+                
+                # 통합 응답 생성
+                logger.info(f"[MCP RAG 통합] 통합 응답 생성 시작 - mcp_data: {list(mcp_data.keys())}")
+                response = self._generate_integrated_response(user_prompt, context, mcp_data)
+                
+                # 세션에 응답 추가
+                if session_id:
+                    self.add_message_to_context(session_id, "assistant", response)
+                
+                return response, True
+            
+            # 종목명/종목코드가 아닌 경우 대화 주제 변경 감지
+            if self._should_clear_pending_state_by_ai(user_prompt, model_name):
+                logger.info(f"[MCP RAG 통합] 대화 주제 변경 감지, 대기 상태 해제")
+                self.clear_pending_state(session_id)
+                response = "네, 다른 주제로 대화를 이어가겠습니다. 무엇을 도와드릴까요?"
+                if session_id:
+                    self.add_message_to_context(session_id, "assistant", response)
+                return response, True
+            
+            # 종목명/종목코드도 아니고 주제 변경도 아닌 경우, 다시 종목명 요청
+            logger.info(f"[MCP RAG 통합] 종목명/종목코드가 아닌 입력, 다시 요청")
+            response = "📈 주식 정보를 제공하기 위해 종목명이나 종목코드를 알려주세요. (예: 삼성전자, 005930, SK하이닉스, 000660, LG전자, 066570 등)"
+            if session_id:
+                self.add_message_to_context(session_id, "assistant", response)
+            return response, False
+        
+        # MCP 서비스 요청 데이터 초기화
+        mcp_data = {}
+        
+        # RAG 컨텍스트 검색
+        context, context_sources = rag_service.retrieve_context(user_prompt, top_k=3)
+        
+        try:
+            # 2. MCP 서비스 요청 (필요한 경우) - 일반적인 요청 처리
             
             # 날씨 관련 키워드 확인
-            weather_keywords = ["날씨", "기온", "습도", "비", "눈", "맑음", "흐림"]
+            from src.config.settings import get_settings
+            settings = get_settings()
+            weather_keywords = settings.mcp_weather_keywords
             if any(keyword in user_prompt for keyword in weather_keywords):
+                logger.info(f"RAG+MCP에서 날씨 관련 키워드 발견: '{user_prompt}' - 매칭된 키워드: {[k for k in weather_keywords if k in user_prompt]}")
                 location = self._extract_location_from_prompt(user_prompt)
+                
                 if location:
+                    logger.info(f"[MCP RAG 통합] ✅ 위치 정보 추출 성공: '{location}'")
+                    # MCP 서버에 날씨 요청
                     try:
                         weather_data = await self._make_mcp_request("weather", {
                             "location": location,
                             "query": user_prompt
                         })
                         if weather_data.get("success"):
-                            weather_info = weather_data.get("data", {})
+                            # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                            # 실제 MCP 서버 응답은 weather_data["data"]에 있음
+                            mcp_response = weather_data.get("data", {})
+                            weather_info = mcp_response.get("result", mcp_response)
                             # 위치 정보를 weather_info에 추가
                             weather_info["location"] = location
                             mcp_data["weather"] = weather_info
+                            logger.info(f"[MCP RAG 통합] ✅ 날씨 데이터 성공적으로 추가됨: {location}")
+                        else:
+                            logger.warning(f"[MCP RAG 통합] 날씨 데이터 요청 실패: {weather_data}")
                     except Exception as e:
-                        logger.warning(f"날씨 데이터 가져오기 실패: {e}")
+                        logger.warning(f"[MCP RAG 통합] 날씨 데이터 요청 중 오류: {e}")
+                else:
+                    logger.info(f"RAG+MCP에서 위치 정보 추출 실패, 사용자에게 입력 요청")
+                    # 위치 정보가 없으면 대기 상태 설정
+                    self.set_weather_request_pending(session_id)
+                    response = "🌤️ 날씨 정보를 제공하기 위해 도시명을 알려주세요. (예: 서울, 부산, 대구, 인천, 광주, 대전, 울산, 제주 등)"
+                    if session_id:
+                        self.add_message_to_context(session_id, "assistant", response)
+                    return response, False
             
             # 주식 관련 키워드 확인
-            stock_keywords = ["주가", "주식", "종목", "증시", "코스피", "코스닥"]
+            stock_keywords = settings.mcp_stock_keywords
             if any(keyword in user_prompt for keyword in stock_keywords):
+                logger.info(f"RAG+MCP에서 주식 관련 키워드 발견: '{user_prompt}' - 매칭된 키워드: {[k for k in stock_keywords if k in user_prompt]}")
                 stock_code = self._extract_stock_code_from_prompt(user_prompt)
+                
                 if stock_code:
+                    logger.info(f"[MCP RAG 통합] ✅ 종목코드 추출 성공: '{stock_code}'")
+                    # MCP 서버에 주식 요청
                     try:
                         stock_data = await self._make_mcp_request("stock", {
                             "code": stock_code,
                             "query": user_prompt
                         })
                         if stock_data.get("success"):
-                            # 주식 코드를 응답 데이터에 포함
-                            stock_response = stock_data.get("data", {})
+                            # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                            # 실제 MCP 서버 응답은 stock_data["data"]에 있음
+                            mcp_response = stock_data.get("data", {})
+                            stock_response = mcp_response.get("result", mcp_response)
                             stock_response["code"] = stock_code  # 주식 코드 추가
                             mcp_data["stock"] = stock_response
+                            logger.info(f"[MCP RAG 통합] ✅ 주식 데이터 성공적으로 추가됨: {stock_code}")
+                        else:
+                            logger.warning(f"[MCP RAG 통합] 주식 데이터 요청 실패: {stock_data}")
                     except Exception as e:
-                        logger.warning(f"주식 데이터 가져오기 실패: {e}")
+                        logger.warning(f"[MCP RAG 통합] 주식 데이터 요청 중 오류: {e}")
+                else:
+                    logger.info(f"RAG+MCP에서 종목코드 추출 실패, 사용자에게 입력 요청")
+                    # 종목코드가 없으면 대기 상태 설정
+                    self.set_stock_request_pending(session_id)
+                    response = "📈 주식 정보를 제공하기 위해 종목명이나 종목코드를 알려주세요. (예: 삼성전자, 005930, SK하이닉스, 000660, LG전자, 066570 등)"
+                    if session_id:
+                        self.add_message_to_context(session_id, "assistant", response)
+                    return response, False
             
-            # 검색 관련 키워드 확인
-            search_keywords = ["검색", "찾기", "최신", "뉴스", "정보"]
+            # 웹 검색 관련 키워드 확인
+            search_keywords = settings.mcp_search_keywords
             if any(keyword in user_prompt for keyword in search_keywords):
-                try:
-                    search_data = await self._make_mcp_request("search", {
-                        "query": user_prompt,
-                        "max_results": 3
-                    })
-                    if search_data.get("success"):
-                        mcp_data["search"] = search_data.get("data", [])
-                except Exception as e:
-                    logger.warning(f"검색 데이터 가져오기 실패: {e}")
-            
-            # 3. 통합 응답 생성
-            response = self._generate_integrated_response(user_prompt, context, mcp_data)
+                logger.info(f"RAG+MCP에서 검색 관련 키워드 발견: '{user_prompt}' - 매칭된 키워드: {[k for k in search_keywords if k in user_prompt]}")
+                
+                # 검색 쿼리 추출
+                search_query = await self._extract_search_query_from_prompt(user_prompt, model_name)
+                if search_query and search_query != user_prompt:
+                    logger.info(f"[MCP RAG 통합] ✅ 검색 쿼리 추출 성공: '{search_query}'")
+                    # MCP 서버에 웹 검색 요청
+                    try:
+                        search_data = await self._make_mcp_request("search", {
+                            "query": search_query,
+                            "max_results": 5
+                        })
+                        if search_data.get("success"):
+                            # MCP 서버 응답 구조에 맞게 수정
+                            # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
+                            # 실제 MCP 서버 응답은 search_data["data"]에 있음
+                            mcp_response = search_data.get("data", {})
+                            result_data = mcp_response.get("result", {})
+                            search_results = result_data.get("results", [])
+                            
+                            # 디버깅을 위한 상세 로그 추가
+                            logger.info(f"[MCP RAG 통합] search_data 구조: {list(search_data.keys())}")
+                            logger.info(f"[MCP RAG 통합] mcp_response 구조: {list(mcp_response.keys())}")
+                            logger.info(f"[MCP RAG 통합] result_data 구조: {list(result_data.keys())}")
+                            logger.info(f"[MCP RAG 통합] search_results 타입: {type(search_results)}")
+                            logger.info(f"[MCP RAG 통합] search_results 길이: {len(search_results) if search_results else 0}")
+                            logger.info(f"[MCP RAG 통합] search_results 내용: {search_results}")
+                            
+                            mcp_data["search"] = {
+                                "query": search_query,
+                                "results": search_results,
+                                "total_results": result_data.get("total_results", "N/A"),
+                                "search_time": result_data.get("search_time", "N/A")
+                            }
+                            logger.info(f"[MCP RAG 통합] ✅ 검색 데이터 성공적으로 추가됨: {len(search_results)}개 결과")
+                        else:
+                            logger.warning(f"[MCP RAG 통합] 검색 데이터 요청 실패: {search_data}")
+                    except Exception as e:
+                        logger.warning(f"[MCP RAG 통합] 검색 데이터 요청 중 오류: {e}")
+                else:
+                    logger.warning(f"[MCP RAG 통합] 검색 쿼리 추출 실패 또는 원본과 동일")
             
         except Exception as e:
-            logger.error(f"RAG + MCP 요청 처리 실패: {e}")
-            response = f"응답 생성 중 오류가 발생했습니다: {str(e)}"
+            logger.error(f"[MCP RAG 통합] MCP 서비스 요청 중 오류: {e}")
+        
+        # 3. 통합 응답 생성
+        logger.info(f"[MCP RAG 통합] 통합 응답 생성 시작 - mcp_data: {list(mcp_data.keys())}")
+        response = self._generate_integrated_response(user_prompt, context, mcp_data)
         
         # 세션에 응답 추가
         if session_id:
@@ -915,10 +1642,12 @@ class MCPClientService:
     def _generate_integrated_response(self, user_prompt: str, context: str, mcp_data: Dict[str, Any]) -> str:
         """RAG 컨텍스트와 MCP 데이터를 통합하여 응답을 생성합니다."""
         try:
+            logger.info(f"[통합 응답 생성] 시작 - mcp_data 키: {list(mcp_data.keys())}")
             response_parts = []
             
             # MCP 데이터 처리
             if "weather" in mcp_data:
+                logger.info(f"[통합 응답 생성] 날씨 데이터 처리 시작")
                 weather_info = mcp_data["weather"]
                 # 위치 정보 추출 - weather_info에서 직접 가져오거나 사용자 프롬프트에서 추출
                 location = weather_info.get("location", "알 수 없는 위치")
@@ -929,25 +1658,41 @@ class MCPClientService:
                         location = extracted_location
                     else:
                         location = "서울"  # 기본값
-                response_parts.append(self._format_weather_response(weather_info, location))
+                weather_response = self._format_weather_response(weather_info, location)
+                response_parts.append(weather_response)
+                logger.info(f"[통합 응답 생성] ✅ 날씨 응답 생성 완료: {location}")
             
             if "stock" in mcp_data:
+                logger.info(f"[통합 응답 생성] 주식 데이터 처리 시작")
                 stock_info = mcp_data["stock"]
                 # stock_info에 code가 없으면 원본 stock_code 사용
                 stock_code = stock_info.get("code", stock_info.get("stock_code", "알 수 없는 종목"))
-                response_parts.append(self._format_stock_response(stock_info, stock_code))
+                stock_response = self._format_stock_response(stock_info, stock_code)
+                response_parts.append(stock_response)
+                logger.info(f"[통합 응답 생성] ✅ 주식 응답 생성 완료: {stock_code}")
             
             if "search" in mcp_data:
-                search_results = mcp_data["search"]
-                response_parts.append(self._format_search_response(search_results, user_prompt))
+                logger.info(f"[통합 응답 생성] 검색 데이터 처리 시작")
+                search_data = mcp_data["search"]
+                search_response = self._format_search_response(search_data, search_data.get("query", user_prompt))
+                response_parts.append(search_response)
+                logger.info(f"[통합 응답 생성] ✅ 검색 응답 생성 완료")
             
 
             
             # 응답 조합
+            logger.info(f"[통합 응답 생성] 응답 조합 시작 - response_parts 개수: {len(response_parts)}")
             if response_parts:
                 response = "\n\n".join(response_parts)
+                logger.info(f"[통합 응답 생성] ✅ MCP 응답 생성 완료 (길이: {len(response)}자)")
             else:
-                response = "죄송합니다. 요청하신 정보를 찾을 수 없습니다."
+                # MCP 데이터가 없는 경우, 일반적인 질문에 대한 응답을 생성
+                # 이는 MCP 서버가 연결되지 않았거나 관련 정보를 제공하지 못한 경우
+                logger.warning(f"[통합 응답 생성] ❌ MCP 데이터가 없음 - 폴백 응답 생성")
+                if "뭐야" in user_prompt or "무엇" in user_prompt or "어떤" in user_prompt:
+                    response = "죄송합니다. MCP 서버에 연결할 수 없어 실시간 정보를 제공할 수 없습니다. 일반적인 질문에 대해서는 AI 모델의 기본 지식으로 답변드리겠습니다."
+                else:
+                    response = "죄송합니다. 요청하신 정보를 찾을 수 없습니다."
             
             return response
             
@@ -955,9 +1700,79 @@ class MCPClientService:
             logger.error(f"통합 응답 생성 실패: {e}")
             return "응답을 생성하는 중 오류가 발생했습니다."
     
-    def _should_use_mcp(self, query: str) -> bool:
+    def _should_use_mcp(self, query: str, model_name: str = None, session_id: str = None, ui_mcp_enabled: bool = True) -> bool:
         """
         주어진 쿼리가 MCP 서비스를 사용해야 하는지 확인합니다.
+        결정 방식에 따라 키워드 기반 또는 AI 기반으로 판단합니다.
+        
+        Args:
+            query: 사용자 쿼리
+            model_name: AI 결정 시 사용할 모델명 (None인 경우 기본 모델 사용)
+            session_id: 세션 ID (세션별 결정 방식 사용)
+            ui_mcp_enabled: UI에서 MCP 사용 여부 (체크박스 상태)
+            
+        Returns:
+            bool: MCP 서비스 사용 여부
+        """
+        # UI에서 MCP 사용이 비활성화된 경우 즉시 False 반환
+        if not ui_mcp_enabled:
+            logger.info(f"[MCP 사용 결정] UI에서 MCP 사용이 비활성화됨 - 즉시 False 반환")
+            return False
+        
+        # 세션별 결정 방식 가져오기
+        decision_method = self.get_mcp_decision_method(session_id)
+        logger.info(f"[MCP 사용 결정] UI 활성화됨, 결정 방식: {decision_method}, 세션: {session_id}, 질문: {query}")
+        
+        if decision_method == 'ai':
+            result = self._should_use_mcp_decision_by_ai(query, model_name)
+            logger.info(f"[MCP 사용 결정] AI 기반 결과: {'사용' if result else '사용 안함'}")
+            return result
+        else:
+            result = self._should_use_mcp_keyword_based(query)
+            logger.info(f"[MCP 사용 결정] 키워드 기반 결과: {'사용' if result else '사용 안함'}")
+            return result
+    
+    def _determine_mcp_service_type(self, query: str) -> str:
+        """
+        MCP 서비스 사용이 결정된 후, 어떤 서비스를 사용할지 결정합니다.
+        
+        Args:
+            query: 사용자 쿼리
+            
+        Returns:
+            str: 서비스 타입 ('weather', 'stock', 'search')
+        """
+        logger.info(f"[MCP 서비스 타입 결정] 질문: {query}")
+        
+        # 설정에서 키워드 목록 가져오기
+        from src.config.settings import get_settings
+        settings = get_settings()
+        
+        # 날씨 관련 키워드 (우선순위 1)
+        weather_keywords = settings.mcp_weather_keywords
+        if any(keyword in query for keyword in weather_keywords):
+            logger.info(f"[MCP 서비스 타입 결정] 날씨 서비스 선택 - 매칭된 키워드: {[k for k in weather_keywords if k in query]}")
+            return "weather"
+        
+        # 주식 관련 키워드 (우선순위 2)
+        stock_keywords = settings.mcp_stock_keywords
+        if any(keyword in query for keyword in stock_keywords):
+            logger.info(f"[MCP 서비스 타입 결정] 주식 서비스 선택 - 매칭된 키워드: {[k for k in stock_keywords if k in query]}")
+            return "stock"
+        
+        # 웹 검색 관련 키워드 (우선순위 3)
+        search_keywords = settings.mcp_search_keywords
+        if any(keyword in query for keyword in search_keywords):
+            logger.info(f"[MCP 서비스 타입 결정] 웹 검색 서비스 선택 - 매칭된 키워드: {[k for k in search_keywords if k in query]}")
+            return "search"
+        
+        # 기본값: 웹 검색 (가장 범용적인 서비스)
+        logger.info(f"[MCP 서비스 타입 결정] 기본값으로 웹 검색 서비스 선택")
+        return "search"
+    
+    def _should_use_mcp_keyword_based(self, query: str) -> bool:
+        """
+        키워드 기반으로 MCP 서비스 사용 여부를 결정합니다.
         
         Args:
             query: 사용자 쿼리
@@ -965,22 +1780,151 @@ class MCPClientService:
         Returns:
             bool: MCP 서비스 사용 여부
         """
+        logger.info(f"[MCP 키워드 결정] 🚀 시작 - 질문: '{query}'")
+        
+        # 설정에서 키워드 목록 가져오기
+        from src.config.settings import get_settings
+        settings = get_settings()
+        
         # 날씨 관련 키워드
-        weather_keywords = ["날씨", "기온", "습도", "비", "눈", "맑음", "흐림", "온도"]
-        if any(keyword in query for keyword in weather_keywords):
+        weather_keywords = settings.mcp_weather_keywords
+        weather_matches = [keyword for keyword in weather_keywords if keyword in query]
+        if weather_matches:
+            logger.info(f"[MCP 키워드 매칭] ✅ 날씨 키워드 발견: {weather_matches}")
             return True
         
         # 주식 관련 키워드
-        stock_keywords = ["주가", "주식", "종목", "증시", "코스피", "코스닥", "삼성전자", "SK하이닉스"]
-        if any(keyword in query for keyword in stock_keywords):
+        stock_keywords = settings.mcp_stock_keywords
+        stock_matches = [keyword for keyword in stock_keywords if keyword in query]
+        if stock_matches:
+            logger.info(f"[MCP 키워드 매칭] ✅ 주식 키워드 발견: {stock_matches}")
             return True
         
         # 검색 관련 키워드
-        search_keywords = ["검색", "찾기", "최신", "뉴스", "정보", "어떻게", "무엇"]
-        if any(keyword in query for keyword in search_keywords):
+        search_keywords = settings.mcp_search_keywords
+        search_matches = [keyword for keyword in search_keywords if keyword in query]
+        if search_matches:
+            logger.info(f"[MCP 키워드 매칭] ✅ 검색 키워드 발견: {search_matches}")
             return True
         
+        logger.info(f"[MCP 키워드 매칭] ❌ 매칭되는 키워드 없음")
         return False
+    
+    def _should_use_mcp_decision_by_ai(self, query: str, model_name: str = None) -> bool:
+        """
+        AI 모델을 사용하여 MCP 서비스 사용 여부를 결정합니다.
+        
+        Args:
+            query: 사용자 쿼리
+            model_name: 사용할 AI 모델명 (None인 경우 기본 모델 사용)
+            
+        Returns:
+            bool: MCP 서비스 사용 여부
+        """
+        try:
+            from src.config.settings import get_settings
+            settings = get_settings()
+            
+            # 사용할 모델 결정
+            target_model = model_name or settings.default_model
+            logger.info(f"[MCP AI 결정] 🚀 시작 - 모델: {target_model}, 질문: '{query}'")
+            
+            # AI 결정을 위한 프롬프트 생성
+            decision_prompt = f"""다음 질문이 실시간 정보가 필요한지 판단해주세요.
+
+질문: "{query}"
+
+실시간 정보가 필요한 경우:
+- 날씨 관련: 날씨, 기온, 습도, 바람, 비, 눈, 더울까, 추울까 등
+- 주식 관련: 주가, 주식, 종목, 증시, 삼성전자, SK하이닉스 등
+- 최신 정보: 최신, 뉴스, 기사, 통계, 실시간, 요즘, 현재 등
+
+답변: "YES" 또는 "NO"만 작성"""
+            
+            logger.info(f"[MCP AI 결정] 📝 프롬프트 생성 완료 (길이: {len(decision_prompt)}자)")
+
+
+
+            # AI 모델을 사용하여 결정
+            try:
+                # 방법 1: LangChain OllamaLLM 시도
+                logger.info(f"[MCP AI 결정] 🔄 LangChain OllamaLLM 방식 시도")
+                llm = OllamaLLM(
+                    model=target_model,
+                    base_url=settings.ollama_base_url,
+                    timeout=settings.ollama_timeout
+                )
+                response = llm.invoke(decision_prompt)
+                logger.info(f"[MCP AI 결정] ✅ LangChain 방식 성공, 응답: '{str(response)}'")
+                
+            except Exception as e:
+                logger.warning(f"[MCP AI 결정] LangChain 방식 실패: {e}")
+                
+                # 방법 2: 직접 Ollama API 호출
+                try:
+                    logger.info(f"[MCP AI 결정] 🔄 직접 Ollama API 호출 방식 시도")
+                    import requests
+                    
+                    ollama_response = requests.post(
+                        f"{settings.ollama_base_url}/api/generate",
+                        json={
+                            "model": target_model,
+                            "prompt": decision_prompt,
+                            "stream": False,
+                            "options": {
+                                "temperature": 0.1,  # 결정을 위해 낮은 temperature 사용
+                                "top_p": 0.9,
+                                "top_k": 40,
+                                "repeat_penalty": 1.1,
+                                "seed": -1
+                            }
+                        },
+                        timeout=settings.ollama_timeout
+                    )
+                    
+                    if ollama_response.status_code == 200:
+                        response_data = ollama_response.json()
+                        response = response_data.get('response', 'NO')
+                        logger.info(f"[MCP AI 결정] ✅ 직접 API 호출 성공, 응답: '{str(response)}'")
+                    else:
+                        logger.error(f"[MCP AI 결정] ❌ Ollama API 오류: HTTP {ollama_response.status_code}")
+                        return False
+                        
+                except Exception as e2:
+                    logger.error(f"[MCP AI 결정] ❌ 직접 API 호출 실패: {e2}")
+                    return False
+            
+            # 응답 파싱 및 분석
+            response_text = str(response).strip()
+            
+            # AI 모델 응답에서 특수 토큰들 제거
+            response_text = re.sub(r'\n<end_of_turn>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<end_of_turn>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<|endoftext|>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<|im_end|>.*$', '', response_text, flags=re.DOTALL)
+            response_text = re.sub(r'<|im_start|>.*$', '', response_text, flags=re.DOTALL)
+            
+            # 줄바꿈과 공백 정리 후 대문자 변환
+            response_text = re.sub(r'\n+', ' ', response_text)
+            response_text = re.sub(r'\s+', ' ', response_text).strip().upper()
+            
+            logger.info(f"[MCP AI 결정] 정규화된 응답: '{response_text}'")
+            
+            # 응답 내용 분석
+            if "YES" in response_text:
+                logger.info(f"[MCP AI 결정] ✅ 결과: MCP 서비스 사용 (YES 포함)")
+                return True
+            else:
+                logger.info(f"[MCP AI 결정] ❌ 결과: MCP 서비스 사용 안함 (YES 없음)")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ AI 기반 MCP 결정 중 오류: {e}")
+            # 오류 발생 시 키워드 기반으로 폴백
+            logger.info("🔄 AI 결정 실패, 키워드 기반으로 폴백")
+            fallback_result = self._should_use_mcp_keyword_based(query)
+            logger.info(f"[MCP AI 결정 폴백] 키워드 기반 결과: {'사용' if fallback_result else '사용 안함'}")
+            return fallback_result     
 
     def get_service_status(self) -> Dict[str, Any]:
         """MCP 서비스의 상태를 반환합니다."""
@@ -991,12 +1935,46 @@ class MCPClientService:
                 "model_name": "N/A", # model_name 파라미터가 제거되어 기본값 사용
                 "timeout": self.timeout,
                 "max_retries": self.max_retries,
-                "active_sessions": len(self.session_contexts)
+                "active_sessions": len(self.session_contexts),
+                "mcp_decision_method": self.mcp_decision_method
             }
         except Exception as e:
             logger.error(f"MCP 서비스 상태 확인 중 오류: {e}")
             return {
                 "status": "error",
+                "error": str(e)
+            }
+
+    async def check_mcp_server_status(self) -> Dict[str, Any]:
+        """MCP 서버 연결 상태를 확인합니다."""
+        try:
+            import httpx
+            logger.info(f"[MCP 서버 상태 확인] 서버 URL: {self.mcp_server_url}")
+            
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{self.mcp_server_url}/health")
+                logger.info(f"[MCP 서버 상태 확인] HTTP 상태 코드: {response.status_code}")
+                logger.info(f"[MCP 서버 상태 확인] 응답 시간: {response.elapsed.total_seconds()}초")
+                
+                if response.status_code == 200:
+                    logger.info(f"[MCP 서버 상태 확인] ✅ 서버 연결 성공")
+                    return {
+                        "status": "connected",
+                        "server_url": self.mcp_server_url,
+                        "response_time": response.elapsed.total_seconds()
+                    }
+                else:
+                    logger.warning(f"[MCP 서버 상태 확인] ❌ 서버 오류: HTTP {response.status_code}")
+                    return {
+                        "status": "error",
+                        "server_url": self.mcp_server_url,
+                        "error": f"HTTP {response.status_code}"
+                    }
+        except Exception as e:
+            logger.error(f"[MCP 서버 상태 확인] ❌ 연결 실패: {e}")
+            return {
+                "status": "disconnected",
+                "server_url": self.mcp_server_url,
                 "error": str(e)
             }
 

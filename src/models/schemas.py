@@ -39,6 +39,11 @@ class SessionData(BaseModel):
     messages: List[Message] = Field(..., description="메시지 목록")
     created_at: str = Field(..., description="생성 시간")
     last_active: str = Field(..., description="마지막 활동 시간")
+    # MCP 요청 대기 상태 관리
+    weather_request_pending: bool = Field(False, description="날씨 요청 대기 상태")
+    stock_request_pending: bool = Field(False, description="주식 요청 대기 상태")
+    pending_location: Optional[str] = Field(None, description="대기 중인 위치 정보")
+    pending_stock_symbol: Optional[str] = Field(None, description="대기 중인 주식 심볼")
 
 class FileWriteRequest(BaseModel):
     """파일 쓰기 요청 모델"""

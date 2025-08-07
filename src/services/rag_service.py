@@ -245,7 +245,7 @@ class RAGService:
     
     async def generate_rag_response(self, query: str, model_name: str = None, 
                             use_rag: bool = True, top_k: int = 5,
-                            system_prompt: str = None, use_mcp: bool = True) -> Dict[str, Any]:
+                            system_prompt: str = None, use_mcp: bool = True, session_id: str = None) -> Dict[str, Any]:
         """
         RAG를 사용하여 AI 응답을 생성합니다.
         
@@ -255,16 +255,21 @@ class RAGService:
             use_rag: RAG 사용 여부
             top_k: 검색할 문서 수
             system_prompt: 시스템 프롬프트
-            use_mcp: MCP 서비스 사용 여부
+            use_mcp: MCP 서비스 사용 여부 (UI 체크박스 상태)
+            session_id: 세션 ID (MCP 결정 방식에 사용)
             
         Returns:
             Dict: 응답 정보
         """
         try:
-            # MCP 서비스 사용 여부 확인
-            if use_mcp and self._should_use_mcp(query):
-                logger.info("MCP 서비스와 RAG 통합 사용")
-                return await self._generate_rag_with_mcp_response(query, model_name, top_k, system_prompt)
+            # MCP 서비스 사용 여부 확인 - UI 설정을 우선적으로 고려
+            if use_mcp and self._should_use_mcp(query, model_name, session_id, ui_mcp_enabled=use_mcp):
+                logger.info("MCP 서비스와 RAG 통합 사용 (UI에서 MCP 사용 허용됨)")
+                return await self._generate_rag_with_mcp_response(query, model_name, top_k, system_prompt, session_id)
+            elif use_mcp:
+                logger.info("UI에서 MCP 사용이 허용되었지만, 쿼리 분석 결과 MCP 서비스 사용이 불필요함")
+            else:
+                logger.info("UI에서 MCP 사용이 비활성화됨")
             
             if not use_rag:
                 # RAG를 사용하지 않는 경우
@@ -467,39 +472,13 @@ class RAGService:
                 "error": str(e)
             }
     
-    def _should_use_mcp(self, query: str) -> bool:
+    def _should_use_mcp(self, query: str, model_name: str = None, session_id: str = None, ui_mcp_enabled: bool = True) -> bool:
         """쿼리가 MCP 서비스를 사용해야 하는지 확인합니다."""
-        # 날씨 관련 키워드
-        weather_keywords = ["날씨", "기온", "습도", "비", "눈", "맑음", "흐림", "온도"]
-        
-        # 주식 관련 키워드
-        stock_keywords = ["주가", "주식", "종목", "증시", "코스피", "코스닥", "현재가", "거래량"]
-        
-        # 검색 관련 키워드
-        search_keywords = ["검색", "찾기", "최신", "뉴스", "정보", "어떻게", "무엇"]
-        
-        query_lower = query.lower()
-        
-        # 키워드 확인
-        has_weather = any(keyword in query_lower for keyword in weather_keywords)
-        has_stock = any(keyword in query_lower for keyword in stock_keywords)
-        has_search = any(keyword in query_lower for keyword in search_keywords)
-        
-        # 한국 도시명이나 주식 종목명이 포함된 경우
-        korean_cities = self._load_korean_cities()
-        stock_names = ["삼성전자", "SK하이닉스", "NAVER", "카카오", "LG에너지솔루션"]
-        
-        has_city = any(city in query for city in korean_cities)
-        has_stock_name = any(stock in query for stock in stock_names)
-        
-        # 6자리 숫자 (주식 종목 코드) 패턴 확인
-        import re
-        has_stock_code = bool(re.search(r'\b\d{6}\b', query))
-        
-        return has_weather or has_stock or has_search or has_city or has_stock_name or has_stock_code
+        # MCP 클라이언트 서비스의 결정 방식 사용 (UI 설정 포함)
+        return self.mcp_service._should_use_mcp(query, model_name, session_id, ui_mcp_enabled=ui_mcp_enabled)
     
     async def _generate_rag_with_mcp_response(self, query: str, model_name: str = None, 
-                                            top_k: int = 5, system_prompt: str = None) -> Dict[str, Any]:
+                                            top_k: int = 5, system_prompt: str = None, session_id: str = None) -> Dict[str, Any]:
         """
         RAG와 MCP를 함께 사용하여 응답을 생성합니다.
         
@@ -508,6 +487,7 @@ class RAGService:
             model_name: 사용할 모델명
             top_k: 검색할 문서 수
             system_prompt: 시스템 프롬프트
+            session_id: 세션 ID
             
         Returns:
             Dict: 응답 정보
@@ -518,7 +498,7 @@ class RAGService:
             
             # 2. MCP 서비스 요청
             mcp_response, mcp_success = await self.mcp_service.process_rag_with_mcp(
-                query, self, session_id=None
+                query, self, session_id=session_id, model_name=model_name
             )
             
             # 3. 통합 응답 생성

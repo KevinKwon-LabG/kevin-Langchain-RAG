@@ -92,20 +92,41 @@ class DocumentService:
             if not settings.chroma_anonymized_telemetry:
                 os.environ['CHROMA_ANONYMIZED_TELEMETRY'] = 'false'
             
-            os.makedirs(settings.chroma_persist_directory, exist_ok=True)
-            
-            # Chroma 클라이언트 설정
-            client = chromadb.PersistentClient(path=settings.chroma_persist_directory)
+            # Chroma DB 클라이언트 설정
+            client = self._create_chroma_client()
             
             self.vectorstore = Chroma(
                 client=client,
                 embedding_function=self.embeddings,
-                collection_name="documents"
+                collection_name=settings.chroma_collection_name
             )
-            logger.info("벡터 저장소가 성공적으로 초기화되었습니다.")
+            logger.info(f"벡터 저장소가 성공적으로 초기화되었습니다. (모드: {settings.chroma_mode})")
         except Exception as e:
             logger.error(f"벡터 저장소 초기화 실패: {e}")
             raise
+    
+    def _create_chroma_client(self):
+        """Chroma DB 클라이언트 생성"""
+        config = settings.get_chroma_client_config()
+        
+        if config["mode"] == "local":
+            # 로컬 모드
+            os.makedirs(config["path"], exist_ok=True)
+            return chromadb.PersistentClient(
+                path=config["path"],
+                settings=chromadb.config.Settings(**config["settings"])
+            )
+        elif config["mode"] == "http":
+            # HTTP 모드 (외부 서버)
+            return chromadb.HttpClient(
+                host=config["host"],
+                port=config["port"],
+                username=config["username"],
+                password=config["password"],
+                ssl=config["ssl"]
+            )
+        else:
+            raise ValueError(f"지원하지 않는 Chroma DB 모드입니다: {config['mode']}")
     
     def _start_processing_thread(self):
         """문서 처리 스레드 시작"""

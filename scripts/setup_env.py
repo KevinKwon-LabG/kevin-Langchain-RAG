@@ -43,9 +43,24 @@ OLLAMA_MAX_RETRIES=3
 # =============================================================================
 # 벡터 데이터베이스 설정
 # =============================================================================
+# Chroma DB 연결 설정
+CHROMA_MODE=local
 CHROMA_PERSIST_DIRECTORY=data/vectorstore
-EMBEDDING_MODEL_NAME=BM-K/KURE
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+CHROMA_USERNAME=
+CHROMA_PASSWORD=
+CHROMA_SSL=false
+CHROMA_ANONYMIZED_TELEMETRY=false
+
+# Chroma DB 컬렉션 설정
+CHROMA_COLLECTION_NAME=documents
+CHROMA_COLLECTION_METADATA={"description": "문서 임베딩 컬렉션"}
+
+# 임베딩 모델 설정
+EMBEDDING_MODEL_NAME=nlpai-lab/KURE-v1
 EMBEDDING_DEVICE=cpu
+HUGGINGFACE_API_KEY=
 
 # =============================================================================
 # 문서 처리 설정
@@ -184,6 +199,12 @@ MCP_SERVER_URL=http://1.237.52.240:11045
 MCP_TIMEOUT=30
 MCP_MAX_RETRIES=3
 MCP_ENABLED=true
+
+# =============================================================================
+# MCP 서비스 사용 결정 방식 설정
+# =============================================================================
+MCP_DECISION_METHOD=ai
+MCP_DECISION_METHODS=[{"value": "keyword", "label": "키워드 기반", "description": "미리 정의된 키워드 매칭으로 MCP 서비스 사용 여부 결정"}, {"value": "ai", "label": "AI 기반", "description": "AI 모델을 사용하여 MCP 서비스 사용 여부 결정"}]
 """
         
         with open(env_file, 'w', encoding='utf-8') as f:
@@ -245,6 +266,10 @@ def customize_env_file():
         top_p = input(f"기본 Top P (기본값: 0.9): ").strip() or "0.9"
         max_tokens = input(f"기본 최대 토큰 수 (기본값: 4000): ").strip() or "4000"
         
+        # MCP 결정 방식 설정
+        print("\n🤖 MCP 결정 방식 설정")
+        mcp_decision_method = input(f"MCP 결정 방식 (기본값: ai): ").strip() or "ai"
+        
         # 설정 적용
         content = content.replace("HOST=0.0.0.0", f"HOST={host}")
         content = content.replace("PORT=11040", f"PORT={port}")
@@ -261,6 +286,7 @@ def customize_env_file():
         content = content.replace("DEFAULT_TEMPERATURE=0.7", f"DEFAULT_TEMPERATURE={temperature}")
         content = content.replace("DEFAULT_TOP_P=0.9", f"DEFAULT_TOP_P={top_p}")
         content = content.replace("MAX_TOKENS=4000", f"MAX_TOKENS={max_tokens}")
+        content = content.replace("MCP_DECISION_METHOD=ai", f"MCP_DECISION_METHOD={mcp_decision_method}")
         
         with open(env_file, 'w', encoding='utf-8') as f:
             f.write(content)
@@ -289,7 +315,8 @@ def validate_env_file():
         required_vars = [
             "HOST", "PORT", "SERVICE_HOST", "SERVICE_PORT", "SERVICE_URL", 
             "OLLAMA_BASE_URL", "MCP_SERVER_HOST", "MCP_SERVER_PORT", "MCP_SERVER_URL",
-            "DEFAULT_MODEL", "DEFAULT_TEMPERATURE", "DEFAULT_TOP_P", "MAX_TOKENS"
+            "DEFAULT_MODEL", "DEFAULT_TEMPERATURE", "DEFAULT_TOP_P", "MAX_TOKENS",
+            "MCP_DECISION_METHOD"
         ]
         
         missing_vars = []

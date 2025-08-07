@@ -29,11 +29,24 @@ class Settings(BaseSettings):
     # =============================================================================
     # 벡터 데이터베이스 설정
     # =============================================================================
+    # Chroma DB 연결 설정
+    chroma_mode: str = "local"  # "local" 또는 "http"
     chroma_persist_directory: str = "data/vectorstore"
+    chroma_host: str = "localhost"
+    chroma_port: int = 8000
+    chroma_username: Optional[str] = None
+    chroma_password: Optional[str] = None
+    chroma_ssl: bool = False
+    chroma_anonymized_telemetry: bool = False
+    
+    # 임베딩 모델 설정
     embedding_model_name: str = "nlpai-lab/KURE-v1"  # KURE (Korea University Retrieval Embedding)
     embedding_device: str = "cpu"
-    chroma_anonymized_telemetry: bool = False
     huggingface_api_key: Optional[str] = None
+    
+    # Chroma DB 컬렉션 설정
+    chroma_collection_name: str = "documents"
+    chroma_collection_metadata: Dict[str, Any] = {"description": "문서 임베딩 컬렉션"}
     
     # =============================================================================
     # 문서 처리 설정
@@ -284,6 +297,155 @@ class Settings(BaseSettings):
     mcp_max_retries: str = "3"
     mcp_enabled: str = "true"
     
+    # MCP 서비스 사용 결정 방식 설정
+    mcp_decision_method: str = "ai"  # "keyword" 또는 "ai"
+    mcp_decision_methods: List[Dict[str, str]] = [
+        {"value": "keyword", "label": "키워드 기반", "description": "미리 정의된 키워드 매칭으로 MCP 서비스 사용 여부 결정"},
+        {"value": "ai", "label": "AI 기반", "description": "AI 모델을 사용하여 MCP 서비스 사용 여부 결정"}
+    ]
+
+    # =============================================================================
+    # MCP 키워드 설정
+    # =============================================================================
+    # 날씨 관련 키워드 목록
+    mcp_weather_keywords: List[str] = [
+        "날씨", "기온", "습도", "비", "눈", "맑음", "흐림", "온도", "바람", "더울까", "추울까",
+        "강수", "강설", "안개", "구름", "맑음", "흐림", "비올까", "눈올까", "바람불까",
+        "체감온도", "최고기온", "최저기온", "일교차", "습도", "강수확률", "풍속", "풍향"
+    ]
+
+    # 주식 관련 키워드 목록
+    mcp_stock_keywords: List[str] = [
+        "주가", "주식", "종목", "증시", "코스피", "코스닥", "시가", "종가", "현재가",
+        "삼성전자", "SK하이닉스", "LG전자", "포스코", "NAVER", "카카오", "현대차", "기아",
+        "LG에너지솔루션", "삼성바이오로직스", "POSCO홀딩스", "삼성SDI", "LG화학", "현대모비스"
+    ]
+
+    # 웹 검색 관련 키워드 목록
+    mcp_search_keywords: List[str] = [
+        "검색", "찾기", "최신", "뉴스", "유행", "기사", "통계", "실시간", "최근",
+        "알려줘", "알려주세요", "찾아줘", "찾아주세요", "무엇인가요", "어떻게요",
+        "궁금해", "알고 싶어", "현재 상황", "지금 뭐가", "요즘 뭐가", "최근에 뭐가"
+    ]
+
+    @field_validator('mcp_weather_keywords', mode='before')
+    @classmethod
+    def parse_mcp_weather_keywords(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [keyword.strip() for keyword in v.split(',')]
+        return v
+
+    @field_validator('mcp_stock_keywords', mode='before')
+    @classmethod
+    def parse_mcp_stock_keywords(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [keyword.strip() for keyword in v.split(',')]
+        return v
+
+    @field_validator('mcp_search_keywords', mode='before')
+    @classmethod
+    def parse_mcp_search_keywords(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [keyword.strip() for keyword in v.split(',')]
+        return v
+    
+    # =============================================================================
+    # 주식 데이터 설정
+    # =============================================================================
+    stocks_data_file: str = "data/stocks_data.json"
+    
+    # =============================================================================
+    # 날씨 도시 데이터 설정
+    # =============================================================================
+    weather_cities_csv_file: str = "data/weather_cities.csv"
+    weather_cities_json_file: str = "data/weather_cities.json"
+    
+    # =============================================================================
+    # 기본 도시 목록 설정
+    # =============================================================================
+    default_cities: List[str] = [
+        "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+        "수원", "성남", "의정부", "안양", "부천", "광명", "평택", "동두천",
+        "안산", "고양", "과천", "구리", "남양주", "오산", "시흥", "군포",
+        "의왕", "하남", "용인", "파주", "이천", "안성", "김포", "화성",
+        "광주", "여주", "양평", "양주", "포천", "연천", "가평",
+        "춘천", "원주", "강릉", "태백", "속초", "삼척", "동해", "횡성",
+        "영월", "평창", "정선", "철원", "화천", "양구", "인제", "고성",
+        "양양", "홍천", "태안", "당진", "서산", "논산", "계룡", "공주",
+        "보령", "아산", "서천", "천안", "예산", "금산", "부여",
+        "청양", "홍성", "제주", "서귀포", "포항", "경주", "김천", "안동",
+        "구미", "영주", "영천", "상주", "문경", "경산", "군산", "익산",
+        "정읍", "남원", "김제", "완주", "진안", "무주", "장수", "임실",
+        "순창", "고창", "부안", "여수", "순천", "나주", "광양", "담양",
+        "곡성", "구례", "고흥", "보성", "화순", "장흥", "강진", "해남",
+        "영암", "무안", "함평", "영광", "장성", "완도", "진도", "신안"
+    ]
+    
+    @field_validator('default_cities', mode='before')
+    @classmethod
+    def parse_default_cities(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return [city.strip() for city in v.split(',')]
+        return v
+    
+    # =============================================================================
+    # 기본 주식 종목 매핑 설정
+    # =============================================================================
+    default_stock_mapping: Dict[str, str] = {
+        "삼성전자": "005930",
+        "SK하이닉스": "000660",
+        "NAVER": "035420",
+        "카카오": "035720",
+        "LG에너지솔루션": "373220",
+        "삼성바이오로직스": "207940",
+        "현대차": "005380",
+        "기아": "000270",
+        "POSCO홀딩스": "005490",
+        "삼성SDI": "006400",
+        "LG화학": "051910",
+        "현대모비스": "012330",
+        "KB금융": "105560",
+        "신한지주": "055550",
+        "하나금융지주": "086790",
+        "우리금융지주": "316140",
+        "LG전자": "066570",
+        "삼성물산": "028260",
+        "SK이노베이션": "096770",
+        "아모레퍼시픽": "090430"
+    }
+    
+    @field_validator('default_stock_mapping', mode='before')
+    @classmethod
+    def parse_default_stock_mapping(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return v
+        return v
+    
+    @field_validator('mcp_decision_methods', mode='before')
+    @classmethod
+    def parse_mcp_decision_methods(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return v
+        return v
+    
 
     
 
@@ -340,6 +502,38 @@ class Settings(BaseSettings):
     def get_rag_top_k_presets(self) -> List[int]:
         """RAG Top K 프리셋을 반환합니다."""
         return self.rag_top_k_presets
+    
+    def get_chroma_client_config(self) -> Dict[str, Any]:
+        """Chroma DB 클라이언트 설정을 반환합니다."""
+        if self.chroma_mode == "local":
+            return {
+                "mode": "local",
+                "path": self.chroma_persist_directory,
+                "settings": {
+                    "anonymized_telemetry": self.chroma_anonymized_telemetry
+                }
+            }
+        elif self.chroma_mode == "http":
+            return {
+                "mode": "http",
+                "host": self.chroma_host,
+                "port": self.chroma_port,
+                "username": self.chroma_username,
+                "password": self.chroma_password,
+                "ssl": self.chroma_ssl
+            }
+        else:
+            raise ValueError(f"지원하지 않는 Chroma DB 모드입니다: {self.chroma_mode}")
+    
+    def get_chroma_url(self) -> str:
+        """Chroma DB URL을 반환합니다."""
+        if self.chroma_mode == "local":
+            return f"file://{self.chroma_persist_directory}"
+        elif self.chroma_mode == "http":
+            protocol = "https" if self.chroma_ssl else "http"
+            return f"{protocol}://{self.chroma_host}:{self.chroma_port}"
+        else:
+            raise ValueError(f"지원하지 않는 Chroma DB 모드입니다: {self.chroma_mode}")
     
 
     
@@ -400,7 +594,11 @@ class Settings(BaseSettings):
                 "top_k_documents": self.default_top_k_documents,
                 "similarity_threshold": self.default_similarity_threshold
             },
-
+            "chroma_db": {
+                "mode": self.chroma_mode,
+                "url": self.get_chroma_url(),
+                "collection_name": self.chroma_collection_name
+            },
             "session": {
                 "max_age_hours": self.max_session_age_hours,
                 "max_messages": self.max_messages_per_session

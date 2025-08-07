@@ -89,21 +89,32 @@ async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, us
         StreamingResponse: 스트리밍 응답
     """
     try:
-        # MCP 서비스 사용 여부 확인
-        if use_mcp and mcp_client_service._should_use_mcp(request.message):
-            logger.info("MCP 서비스 사용")
+        # 대기 상태 확인
+        pending_state = mcp_client_service.get_pending_state(session.session_id)
+        if pending_state["weather_request_pending"] or pending_state["stock_request_pending"]:
+            logger.info(f"MCP 요청 대기 상태 감지: weather={pending_state['weather_request_pending']}, stock={pending_state['stock_request_pending']}")
             return await _generate_mcp_response(request, session, use_rag)
+        
+        # MCP 서비스 사용 여부 확인 - UI 설정을 우선적으로 고려
+        if use_mcp and mcp_client_service._should_use_mcp(request.message, request.model, session.session_id, ui_mcp_enabled=use_mcp):
+            logger.info(f"[채팅 API] MCP 서비스 사용 (UI에서 MCP 사용 허용됨) - 질문: {request.message}")
+            return await _generate_mcp_response(request, session, use_rag)
+        elif use_mcp:
+            logger.info(f"[채팅 API] UI에서 MCP 사용이 허용되었지만, 쿼리 분석 결과 MCP 서비스 사용이 불필요함 - 질문: {request.message}")
+        else:
+            logger.info(f"[채팅 API] UI에서 MCP 사용이 비활성화됨 - 질문: {request.message}")
         
         # RAG 사용 여부에 따른 응답 생성
         if use_rag:
-            # RAG 응답 생성 (MCP 통합)
+            # RAG 응답 생성 (MCP 통합) - UI의 MCP 사용 여부를 명시적으로 전달
             rag_result = await rag_service.generate_rag_response(
                 query=request.message,
                 model_name=request.model,
                 use_rag=True,
                 top_k=getattr(request, 'rag_top_k', 5),
                 system_prompt=getattr(request, 'system', settings.default_system_prompt),
-                use_mcp=use_mcp
+                use_mcp=use_mcp,  # UI 체크박스 상태
+                session_id=session.session_id
             )
             
             response = rag_result.get('response', 'RAG 응답을 생성할 수 없습니다.')
@@ -226,30 +237,46 @@ async def _generate_mcp_response(request: ChatRequest, session, use_rag: bool):
         # MCP 서비스 요청
         if use_rag:
             # RAG와 MCP 통합
+            logger.info(f"[채팅 API] RAG와 MCP 통합 요청 - 질문: {request.message}")
             mcp_response, mcp_success = await mcp_client_service.process_rag_with_mcp(
-                request.message, rag_service, session.session_id
+                request.message, rag_service, session.session_id, request.model
             )
         else:
-            # MCP만 사용
-            # 날씨 요청 확인
-            weather_keywords = ["날씨", "기온", "습도", "비", "눈", "맑음", "흐림"]
-            if any(keyword in request.message for keyword in weather_keywords):
-                mcp_response, mcp_success = await mcp_client_service.process_weather_request(
-                    request.message, session.session_id
-                )
-            # 주식 요청 확인
-            elif any(keyword in request.message for keyword in ["주가", "시가", "종가", "주식"]):
-                mcp_response, mcp_success = await mcp_client_service.process_stock_request(
-                    request.message, session.session_id
-                )
-            # 검색 요청 확인
-            elif any(keyword in request.message for keyword in ["검색", "찾기", "최신", "뉴스"]):
-                mcp_response, mcp_success = await mcp_client_service.process_web_search_request(
-                    request.message, session.session_id
-                )
+            # MCP만 사용 - MCP 서비스의 결정 로직 사용 (UI 설정 고려)
+            if mcp_client_service._should_use_mcp(request.message, request.model, session.session_id, ui_mcp_enabled=True):
+                # MCP 서비스가 사용되어야 한다고 판단된 경우
+                service_type = mcp_client_service._determine_mcp_service_type(request.message)
+                logger.info(f"[채팅 API] MCP 서비스 타입 결정: {service_type} - 질문: {request.message}")
+                
+                if service_type == "weather":
+                    logger.info(f"[채팅 API] 날씨 서비스 요청 - 질문: {request.message}")
+                    mcp_response, mcp_success = await mcp_client_service.process_weather_request(
+                        request.message, session.session_id, request.model
+                    )
+                elif service_type == "stock":
+                    logger.info(f"[채팅 API] 주식 서비스 요청 - 질문: {request.message}")
+                    mcp_response, mcp_success = await mcp_client_service.process_stock_request(
+                        request.message, session.session_id, request.model
+                    )
+                elif service_type == "search":
+                    logger.info(f"[채팅 API] 웹 검색 서비스 요청 - 질문: {request.message}")
+                    mcp_response, mcp_success = await mcp_client_service.process_web_search_request(
+                        request.message, session.session_id, request.model
+                    )
+                else:
+                    # 기본값: 웹 검색
+                    logger.info(f"[채팅 API] 기본 웹 검색 서비스 요청 - 질문: {request.message}")
+                    mcp_response, mcp_success = await mcp_client_service.process_web_search_request(
+                        request.message, session.session_id, request.model
+                    )
             else:
                 # 일반 AI 응답으로 폴백
+                logger.info(f"[채팅 API] MCP 사용하지 않음, 일반 AI 응답으로 폴백 - 질문: {request.message}")
                 return await _generate_ai_response(request, session, use_rag, False)
+        
+        # MCP 응답 결과 로깅
+        logger.info(f"[채팅 API] MCP 응답 완료 - 성공: {mcp_success}")
+        logger.info(f"[채팅 API] MCP 응답 내용: {mcp_response}")
         
         # 세션에 메시지 추가
         add_message_to_session(session.session_id, "user", request.message, request.model)
@@ -392,7 +419,7 @@ async def mcp_search(request: ChatRequest):
         
         # 검색 요청 처리
         response, success = await mcp_client_service.process_web_search_request(
-            request.message, session.session_id
+            request.message, session.session_id, request.model
         )
         
         # 세션에 메시지 추가
@@ -432,7 +459,7 @@ async def mcp_integrated(request: ChatRequest):
         
         # RAG와 MCP 통합 요청 처리
         response, success = await mcp_client_service.process_rag_with_mcp(
-            request.message, rag_service, session.session_id
+            request.message, rag_service, session.session_id, request.model
         )
         
         # 세션에 메시지 추가

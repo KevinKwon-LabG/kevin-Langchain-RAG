@@ -446,19 +446,7 @@
         .mcp-btn {
             background: linear-gradient(135deg, #3498db, #2980b9);
             color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-left: 10px;
-            height: 36px;
-            min-height: 36px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
+            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
         }
 
         .mcp-btn:hover {
@@ -971,26 +959,58 @@
 
         .session-buttons {
             display: flex;
-            gap: 8px;
+            gap: 12px;
             align-items: center;
+        }
+
+        /* 공통 버튼 스타일 */
+        .session-btn {
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            height: 36px;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+
+        .mcp-checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(52, 152, 219, 0.1);
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid rgba(52, 152, 219, 0.2);
+            height: 36px;
+            min-height: 36px;
+        }
+
+        .mcp-checkbox-container input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #3498db;
+        }
+
+        .mcp-checkbox-container label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #2c3e50;
+            cursor: pointer;
+            white-space: nowrap;
         }
 
         .reference-btn {
             background: linear-gradient(135deg, #9b59b6, #8e44ad);
             color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
             box-shadow: 0 2px 8px rgba(155, 89, 182, 0.3);
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            height: 36px;
-            min-height: 36px;
         }
 
         .reference-btn:hover {
@@ -1006,20 +1026,8 @@
         .developer-mode-btn {
             background: linear-gradient(135deg, #e74c3c, #c0392b);
             color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
             box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
-            display: flex;
-            align-items: center;
-            gap: 4px;
             position: relative;
-            height: 36px;
-            min-height: 36px;
         }
 
         .developer-mode-btn:hover {
@@ -1205,13 +1213,17 @@
                 <div class="session-info" id="sessionInfo">
                     <div class="session-info-text">새로운 대화를 시작하세요</div>
                     <div class="session-buttons">
-                        <button class="reference-btn" id="referenceBtn" onclick="toggleReferencePanel()">
+                        <div class="mcp-checkbox-container">
+                            <input type="checkbox" id="mcpUseCheckbox" checked>
+                            <label for="mcpUseCheckbox">MCP 사용</label>
+                        </div>
+                        <button class="session-btn reference-btn" id="referenceBtn" onclick="toggleReferencePanel()">
                             📚 RAG
                         </button>
-                        <button class="mcp-btn" id="mcpBtn" onclick="toggleMCPPanel()">
+                        <button class="session-btn mcp-btn" id="mcpBtn" onclick="toggleMCPPanel()">
                             🌐 MCP
                         </button>
-                        <button class="developer-mode-btn" id="developerModeBtn" onclick="toggleDeveloperMode()">
+                        <button class="session-btn developer-mode-btn" id="developerModeBtn" onclick="toggleDeveloperMode()">
                             🔧 Dev Mode
                         </button>
                     </div>
@@ -1318,6 +1330,21 @@
             </div>
 
             <div class="mcp-section">
+                <h3>⚙️ MCP 설정</h3>
+                <div class="mcp-setting">
+                    <label for="mcpDecisionMethod">결정 방식:</label>
+                    <select id="mcpDecisionMethod" class="mcp-input" style="margin-top: 8px;">
+                        <option value="ai">AI 기반</option>
+                        <option value="keyword">키워드 기반</option>
+                    </select>
+                    <p style="font-size: 0.8rem; color: #7f8c8d; margin-top: 8px;">
+                        <strong>키워드 기반:</strong> 미리 정의된 키워드 매칭으로 MCP 서비스 사용 여부 결정<br>
+                        <strong>AI 기반:</strong> AI 모델을 사용하여 MCP 서비스 사용 여부 결정
+                    </p>
+                </div>
+            </div>
+
+            <div class="mcp-section">
                 <h3>📊 MCP 상태</h3>
                 <div class="mcp-status" id="mcpStatus">
                     <div class="loading">MCP 서비스 상태 확인 중...</div>
@@ -1347,6 +1374,10 @@
                     <div class="developer-card">
                         <h4>AI 모델</h4>
                         <p id="devAIModel">확인 중...</p>
+                    </div>
+                    <div class="developer-card">
+                        <h4>MCP 사용</h4>
+                        <p id="devMCPStatus">확인 중...</p>
                     </div>
                 </div>
             </div>
@@ -1477,6 +1508,23 @@
                 
                 console.log('초기화 완료 - 선택된 모델:', selectedModel, '현재 세션:', currentSessionId);
                 console.log('애플리케이션 초기화 완료');
+                
+                // MCP 체크박스 이벤트 리스너 추가
+                const mcpCheckbox = document.getElementById('mcpUseCheckbox');
+                if (mcpCheckbox) {
+                    mcpCheckbox.addEventListener('change', () => {
+                        updateMCPStatus();
+                        if (developerModeActive) {
+                            updateDeveloperPanel();
+                        }
+                    });
+                }
+
+                // MCP 결정 방식 선택 이벤트 리스너 추가
+                const mcpDecisionSelect = document.getElementById('mcpDecisionMethod');
+                if (mcpDecisionSelect) {
+                    mcpDecisionSelect.addEventListener('change', changeMCPDecisionMethod);
+                }
                 
             } catch (error) {
                 console.error('초기화 중 오류 발생:', error);
@@ -2148,12 +2196,17 @@
             showTypingIndicator(true);
 
             try {
+                // MCP 사용 여부 확인
+                const useMCP = document.getElementById('mcpUseCheckbox').checked;
+                console.log('MCP 사용 여부:', useMCP ? '활성화' : '비활성화');
+                
                 // 기본 채팅 API 호출
                 const params = {
                     session_id: currentSessionId,
                     model: selectedModel,
                     message: message,
                     system: document.getElementById('system').value.trim() || 'You are a helpful assistant.',
+                    use_mcp: useMCP,  // UI 체크박스 상태
                     options: {
                         temperature: parseFloat(document.getElementById('temperature').value),
                         top_p: parseFloat(document.getElementById('top_p').value),
@@ -2372,6 +2425,7 @@
                 btn.classList.add('active');
                 panel.classList.add('active');
                 loadMCPStatus();
+                loadMCPDecisionMethods();
                 console.log('MCP 패널 활성화');
             }
         }
@@ -2469,6 +2523,9 @@
             // AI 모델 정보 업데이트
             await updateAIModelInfo();
             
+            // MCP 상태 업데이트
+            updateMCPStatus();
+            
             // 리소스 모니터링 상태 업데이트
             updateResourceMonitoring();
             
@@ -2494,6 +2551,113 @@
                 // 모델이 선택되지 않은 경우
                 modelInfoElement.textContent = '모델을 선택해주세요';
                 modelInfoElement.style.color = '#f39c12'; // 주황색
+            }
+        }
+
+        // MCP 상태 업데이트
+        function updateMCPStatus() {
+            const mcpStatusElement = document.getElementById('devMCPStatus');
+            if (!mcpStatusElement) {
+                return;
+            }
+            
+            const useMCP = document.getElementById('mcpUseCheckbox').checked;
+            
+            if (useMCP) {
+                mcpStatusElement.textContent = '활성화됨 (UI 설정)';
+                mcpStatusElement.style.color = '#27ae60'; // 녹색
+            } else {
+                mcpStatusElement.textContent = '비활성화됨 (UI 설정)';
+                mcpStatusElement.style.color = '#e74c3c'; // 빨간색
+            }
+        }
+
+        // MCP 결정 방식 로드
+        async function loadMCPDecisionMethods() {
+            try {
+                // 먼저 로컬 스토리지에서 저장된 설정 확인
+                const savedMethod = localStorage.getItem('mcpDecisionMethod');
+                
+                if (savedMethod) {
+                    // 로컬 스토리지에 저장된 설정이 있으면 사용
+                    const selectElement = document.getElementById('mcpDecisionMethod');
+                    if (selectElement) {
+                        selectElement.value = savedMethod;
+                        console.log('로컬 스토리지에서 MCP 결정 방식 로드:', savedMethod);
+                    }
+                                    } else {
+                        // 로컬 스토리지에 없으면 서버에서 가져오기
+                        const response = await fetch(`/api/settings/mcp-decision-method?session_id=${currentSessionId}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            const selectElement = document.getElementById('mcpDecisionMethod');
+                            if (selectElement) {
+                                selectElement.value = data.current_method;
+                                // 서버에서 가져온 값을 로컬 스토리지에 저장
+                                localStorage.setItem('mcpDecisionMethod', data.current_method);
+                                console.log('서버에서 MCP 결정 방식 로드:', data.current_method);
+                            }
+                        } else {
+                            // 서버에서 가져오기 실패 시 기본값 'ai' 사용
+                            const selectElement = document.getElementById('mcpDecisionMethod');
+                            if (selectElement) {
+                                selectElement.value = 'ai';
+                                localStorage.setItem('mcpDecisionMethod', 'ai');
+                                console.log('기본값으로 AI 기반 설정');
+                            }
+                        }
+                    }
+            } catch (error) {
+                console.error('MCP 결정 방식 로드 실패:', error);
+            }
+        }
+
+        // MCP 결정 방식 변경
+        async function changeMCPDecisionMethod() {
+            const selectElement = document.getElementById('mcpDecisionMethod');
+            if (!selectElement) return;
+
+            const method = selectElement.value;
+            try {
+                const response = await fetch(`/api/settings/mcp-decision-method?method=${method}&session_id=${currentSessionId}`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('MCP 결정 방식 변경됨:', data.message);
+                    
+                    // 로컬 스토리지에 설정 저장
+                    localStorage.setItem('mcpDecisionMethod', method);
+                    console.log('로컬 스토리지에 MCP 결정 방식 저장:', method);
+                    
+                    // 성공 메시지 표시
+                    const statusElement = document.getElementById('mcpStatus');
+                    if (statusElement) {
+                        statusElement.innerHTML = `
+                            <div style="color: #27ae60; font-weight: bold; margin-bottom: 10px;">
+                                ✅ ${data.message}
+                            </div>
+                            <div style="font-size: 0.9rem; color: #2c3e50;">
+                                현재 방식: ${data.current_method === 'keyword' ? '키워드 기반' : 'AI 기반'}
+                            </div>
+                        `;
+                    }
+                } else {
+                    throw new Error('MCP 결정 방식 변경 실패');
+                }
+            } catch (error) {
+                console.error('MCP 결정 방식 변경 실패:', error);
+                
+                // 오류 메시지 표시
+                const statusElement = document.getElementById('mcpStatus');
+                if (statusElement) {
+                    statusElement.innerHTML = `
+                        <div style="color: #e74c3c; font-weight: bold;">
+                            ❌ MCP 결정 방식 변경 실패
+                        </div>
+                    `;
+                }
             }
         }
 
@@ -3019,24 +3183,49 @@
             statusDiv.innerHTML = '📊 MCP 서비스 상태 확인 중...';
 
             try {
-                const response = await fetch('/api/chat/mcp/status');
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    const mcpInfo = data.mcp_service;
-                    statusDiv.innerHTML = `
-                        <strong>MCP 서비스 상태:</strong> ${mcpInfo.status}<br>
-                        <strong>서버 URL:</strong> ${mcpInfo.server_url}<br>
-                        <strong>모델명:</strong> ${mcpInfo.model_name}<br>
-                        <strong>타임아웃:</strong> ${mcpInfo.timeout}초<br>
-                        <strong>최대 재시도:</strong> ${mcpInfo.max_retries}회<br>
-                        <strong>활성 세션:</strong> ${mcpInfo.active_sessions}개
-                    `;
+                const response = await fetch('/api/settings/mcp-server-status');
+                if (response.ok) {
+                    const data = await response.json();
+                    const serverStatus = data.server_status;
+                    
+                    if (serverStatus.status === 'connected') {
+                        statusDiv.innerHTML = `
+                            <div style="color: #27ae60; font-weight: bold; margin-bottom: 10px;">
+                                ✅ MCP 서버 연결됨
+                            </div>
+                            <div style="font-size: 0.9rem; color: #2c3e50;">
+                                <strong>서버:</strong> ${serverStatus.server_url}<br>
+                                <strong>응답시간:</strong> ${serverStatus.response_time.toFixed(3)}초
+                            </div>
+                        `;
+                    } else {
+                        statusDiv.innerHTML = `
+                            <div style="color: #e74c3c; font-weight: bold; margin-bottom: 10px;">
+                                ❌ MCP 서버 연결 실패
+                            </div>
+                            <div style="font-size: 0.9rem; color: #2c3e50;">
+                                <strong>서버:</strong> ${serverStatus.server_url}<br>
+                                <strong>오류:</strong> ${serverStatus.error}
+                            </div>
+                            <div style="font-size: 0.8rem; color: #7f8c8d; margin-top: 10px;">
+                                💡 MCP 서버가 실행되지 않았거나 연결할 수 없습니다.<br>
+                                서버 상태를 확인하고 다시 시도해주세요.
+                            </div>
+                        `;
+                    }
                 } else {
-                    statusDiv.innerHTML = `❌ MCP 서비스 상태 확인 실패: ${data.error}`;
+                    statusDiv.innerHTML = `❌ MCP 서비스 상태 확인 실패`;
                 }
             } catch (error) {
-                statusDiv.innerHTML = `❌ 네트워크 오류: ${error.message}`;
+                console.error('MCP 상태 로드 실패:', error);
+                statusDiv.innerHTML = `
+                    <div style="color: #e74c3c; font-weight: bold;">
+                        ❌ MCP 상태 확인 실패
+                    </div>
+                    <div style="font-size: 0.8rem; color: #7f8c8d; margin-top: 10px;">
+                        💡 MCP 서버 연결을 확인할 수 없습니다.
+                    </div>
+                `;
             }
         }
 
