@@ -15,7 +15,9 @@ class ChatRequest(BaseModel):
     system: Optional[str] = Field("You are a helpful assistant.", description="시스템 프롬프트")
     options: Optional[Dict[str, Any]] = Field({}, description="추가 옵션")
     use_rag: Optional[bool] = Field(True, description="RAG 기능 사용 여부")
+    use_external_rag: Optional[bool] = Field(True, description="외부 RAG 서비스 사용 여부")
     rag_top_k: Optional[int] = Field(5, description="RAG 검색 시 가져올 문서 수")
+    use_mcp: Optional[bool] = Field(True, description="MCP 서비스 사용 여부")
     # 의사결정 서비스 제거됨
 
 class SessionInfo(BaseModel):

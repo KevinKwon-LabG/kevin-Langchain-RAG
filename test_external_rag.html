@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>외부 RAG 서버 테스트</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 25px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+
+        .checkbox-group {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+
+        .result-section {
+            margin-top: 30px;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #28a745;
+        }
+
+        .result-card.error {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .result-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .result-meta {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .result-content {
+            line-height: 1.6;
+        }
+
+        .result-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 3px solid #667eea;
+        }
+
+        .result-item h4 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .result-item p {
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .metadata {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-healthy {
+            background: #28a745;
+        }
+
+        .status-error {
+            background: #dc3545;
+        }
+
+        .status-unreachable {
+            background: #ffc107;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .info-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e1e5e9;
+        }
+
+        .info-label {
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            color: #333;
+            word-break: break-all;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .checkbox-group {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 외부 RAG 서버 테스트</h1>
+            <p>Chroma API를 사용한 외부 RAG 서버와의 통신을 테스트합니다</p>
+        </div>
+
+        <div class="content">
+            <!-- 서버 정보 섹션 -->
+            <div class="section">
+                <h2>📋 서버 정보</h2>
+                <div id="serverInfo">
+                    <p>서버 정보를 불러오는 중...</p>
+                </div>
+            </div>
+
+            <!-- 헬스 체크 섹션 -->
+            <div class="section">
+                <h2>🏥 서버 상태 확인</h2>
+                <button class="btn btn-secondary" onclick="checkHealth()">서버 상태 확인</button>
+                <div id="healthResult"></div>
+            </div>
+
+            <!-- 쿼리 테스트 섹션 -->
+            <div class="section">
+                <h2>🔎 쿼리 테스트</h2>
+                <div class="form-group">
+                    <label for="queryText">검색 쿼리:</label>
+                    <textarea id="queryText" class="form-control" rows="3" placeholder="검색하고 싶은 내용을 입력하세요..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="nResults">결과 수:</label>
+                    <input type="number" id="nResults" class="form-control" value="5" min="1" max="20">
+                </div>
+                
+                <div class="form-group">
+                    <label>포함할 정보:</label>
+                    <div class="checkbox-group">
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="includeMetadata" checked>
+                            <label for="includeMetadata">메타데이터</label>
+                        </div>
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="includeDocuments" checked>
+                            <label for="includeDocuments">문서 내용</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <button class="btn btn-success" onclick="sendQuery()">쿼리 전송</button>
+                <button class="btn btn-secondary" onclick="clearResults()">결과 지우기</button>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>쿼리 처리 중...</p>
+                </div>
+                
+                <div id="queryResult" class="result-section"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 페이지 로드 시 서버 정보 가져오기
+        document.addEventListener('DOMContentLoaded', function() {
+            loadServerInfo();
+        });
+
+        // 서버 정보 로드
+        async function loadServerInfo() {
+            try {
+                const response = await fetch('/external-rag/info');
+                const data = await response.json();
+                
+                const serverInfoHtml = `
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <div class="info-label">서버 URL</div>
+                            <div class="info-value">${data.server_url}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">Tenant ID</div>
+                            <div class="info-value">${data.tenant_id}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">데이터베이스</div>
+                            <div class="info-value">${data.database_name}</div>
+                        </div>
+                        <div class="info-item">
+                            <div class="info-label">컬렉션 ID</div>
+                            <div class="info-value">${data.collection_id}</div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('serverInfo').innerHTML = serverInfoHtml;
+            } catch (error) {
+                document.getElementById('serverInfo').innerHTML = `
+                    <div class="result-card error">
+                        <div class="result-content">서버 정보를 불러올 수 없습니다: ${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // 헬스 체크
+        async function checkHealth() {
+            const healthResult = document.getElementById('healthResult');
+            healthResult.innerHTML = '<div class="loading"><div class="spinner"></div><p>상태 확인 중...</p></div>';
+            
+            try {
+                const response = await fetch('/external-rag/health');
+                const data = await response.json();
+                
+                const statusClass = data.server_status === 'healthy' ? 'status-healthy' : 
+                                  data.server_status === 'error' ? 'status-error' : 'status-unreachable';
+                
+                const statusText = data.server_status === 'healthy' ? '정상' : 
+                                 data.server_status === 'error' ? '오류' : '연결 불가';
+                
+                healthResult.innerHTML = `
+                    <div class="result-card ${data.server_status !== 'healthy' ? 'error' : ''}">
+                        <div class="result-header">
+                            <div class="result-title">
+                                <span class="status-indicator ${statusClass}"></span>
+                                서버 상태: ${statusText}
+                            </div>
+                            <div class="result-meta">응답 시간: ${data.response_time.toFixed(3)}초</div>
+                        </div>
+                        <div class="result-content">
+                            <p><strong>엔드포인트:</strong> ${data.endpoint}</p>
+                            <p><strong>확인 시간:</strong> ${new Date(data.timestamp).toLocaleString('ko-KR')}</p>
+                            ${data.error_message ? `<p><strong>오류:</strong> ${data.error_message}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                healthResult.innerHTML = `
+                    <div class="result-card error">
+                        <div class="result-content">헬스 체크 실패: ${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // 쿼리 전송
+        async function sendQuery() {
+            const queryText = document.getElementById('queryText').value.trim();
+            if (!queryText) {
+                alert('검색 쿼리를 입력해주세요.');
+                return;
+            }
+            
+            const nResults = parseInt(document.getElementById('nResults').value);
+            const includeMetadata = document.getElementById('includeMetadata').checked;
+            const includeDocuments = document.getElementById('includeDocuments').checked;
+            
+            const loading = document.getElementById('loading');
+            const queryResult = document.getElementById('queryResult');
+            
+            loading.style.display = 'block';
+            queryResult.innerHTML = '';
+            
+            try {
+                const response = await fetch('/external-rag/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: queryText,
+                        n_results: nResults,
+                        include_metadata: includeMetadata,
+                        include_documents: includeDocuments
+                    })
+                });
+                
+                const data = await response.json();
+                
+                loading.style.display = 'none';
+                
+                if (data.success) {
+                    let resultsHtml = `
+                        <div class="result-card">
+                            <div class="result-header">
+                                <div class="result-title">쿼리 결과</div>
+                                <div class="result-meta">
+                                    ${data.total_results}개 결과 | ${data.response_time.toFixed(3)}초
+                                </div>
+                            </div>
+                            <div class="result-content">
+                                <p><strong>쿼리:</strong> ${data.query}</p>
+                                <p><strong>검색 시간:</strong> ${new Date(data.timestamp).toLocaleString('ko-KR')}</p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    if (data.results.length > 0) {
+                        data.results.forEach((result, index) => {
+                            resultsHtml += `
+                                <div class="result-item">
+                                    <h4>결과 #${result.rank}</h4>
+                                    <p><strong>ID:</strong> ${result.id}</p>
+                                    <p><strong>유사도 점수:</strong> ${result.distance ? (1 - result.distance).toFixed(4) : 'N/A'}</p>
+                                    ${result.document ? `<p><strong>문서 내용:</strong> ${result.document}</p>` : ''}
+                                    ${result.metadata ? `
+                                        <div class="metadata">
+                                            <strong>메타데이터:</strong><br>
+                                            ${JSON.stringify(result.metadata, null, 2)}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        });
+                    } else {
+                        resultsHtml += `
+                            <div class="result-item">
+                                <p>검색 결과가 없습니다.</p>
+                            </div>
+                        `;
+                    }
+                    
+                    queryResult.innerHTML = resultsHtml;
+                } else {
+                    queryResult.innerHTML = `
+                        <div class="result-card error">
+                            <div class="result-header">
+                                <div class="result-title">쿼리 실패</div>
+                                <div class="result-meta">응답 시간: ${data.response_time.toFixed(3)}초</div>
+                            </div>
+                            <div class="result-content">
+                                <p><strong>쿼리:</strong> ${data.query}</p>
+                                <p><strong>오류:</strong> ${data.error_message}</p>
+                                <p><strong>시간:</strong> ${new Date(data.timestamp).toLocaleString('ko-KR')}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                loading.style.display = 'none';
+                queryResult.innerHTML = `
+                    <div class="result-card error">
+                        <div class="result-content">쿼리 전송 실패: ${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // 결과 지우기
+        function clearResults() {
+            document.getElementById('queryResult').innerHTML = '';
+            document.getElementById('queryText').value = '';
+        }
+
+        // Enter 키로 쿼리 전송
+        document.getElementById('queryText').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                sendQuery();
+            }
+        });
+    </script>
+</body>
+</html>

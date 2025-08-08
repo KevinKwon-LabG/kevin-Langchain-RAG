@@ -872,6 +872,9 @@ class MCPClientService:
     def _format_weather_response(self, weather_info: Dict[str, Any], location: str) -> str:
         """날씨 정보를 포맷팅합니다."""
         try:
+            logger.info(f"[날씨 포맷팅] 시작 - location: {location}, weather_info 타입: {type(weather_info)}")
+            logger.info(f"[날씨 포맷팅] weather_info 키: {list(weather_info.keys()) if isinstance(weather_info, dict) else 'Not a dict'}")
+            
             # 위치 정보가 "알 수 없는 위치"인 경우 기본값으로 변경
             if location == "알 수 없는 위치":
                 location = "서울"
@@ -879,7 +882,29 @@ class MCPClientService:
             # MCP 서버의 실제 응답 형식에 맞게 수정
             if isinstance(weather_info, dict):
                 # MCP 서버 응답 구조: {"success": true, "result": {"success": true, "data": {...}}}
-                if "result" in weather_info and isinstance(weather_info["result"], dict):
+                # 또는 process_rag_with_mcp에서 이미 result 필드를 추출한 경우: {"success": true, "data": {...}, "content": [...]}
+                
+                # content 필드가 있는 경우 (이미 포맷된 텍스트) - 우선 처리
+                logger.info(f"[날씨 포맷팅] content 필드 확인: {'content' in weather_info}")
+                if "content" in weather_info:
+                    logger.info(f"[날씨 포맷팅] content 타입: {type(weather_info['content'])}")
+                    if isinstance(weather_info["content"], list):
+                        logger.info(f"[날씨 포맷팅] content 필드 발견: {len(weather_info['content'])}개 항목")
+                    for i, content_item in enumerate(weather_info["content"]):
+                        logger.info(f"[날씨 포맷팅] content_item[{i}]: {content_item}")
+                        if isinstance(content_item, dict) and content_item.get("type") == "text":
+                            formatted_text = content_item.get("text", f"{location}의 날씨 정보를 표시할 수 없습니다.")
+                            logger.info(f"[날씨 포맷팅] 원본 content 텍스트: {formatted_text}")
+                            # content 텍스트에 위치 정보가 없으면 추가
+                            if location not in formatted_text:
+                                formatted_text = f"📍 {location} {formatted_text}"
+                            logger.info(f"[날씨 포맷팅] 최종 content 텍스트 반환: {formatted_text}")
+                            return formatted_text
+                
+                # data 필드가 있는 경우 (구조화된 데이터)
+                if "data" in weather_info and isinstance(weather_info["data"], dict):
+                    data = weather_info["data"]
+                elif "result" in weather_info and isinstance(weather_info["result"], dict):
                     result_data = weather_info["result"]
                     
                     # content 필드가 있는 경우 (이미 포맷된 텍스트) - 우선 처리
@@ -890,67 +915,62 @@ class MCPClientService:
                                 # content 텍스트에 위치 정보가 없으면 추가
                                 if location not in formatted_text:
                                     formatted_text = f"📍 {location} {formatted_text}"
+                                logger.info(f"[날씨 포맷팅] content 텍스트 반환: {formatted_text}")
                                 return formatted_text
                     
                     # data 필드가 있는 경우 (구조화된 데이터)
                     if "data" in result_data and isinstance(result_data["data"], dict):
                         data = result_data["data"]
-                        
-                        # 온도 정보
-                        temp_info = data.get("temperature", {})
-                        if isinstance(temp_info, dict):
-                            temperature = temp_info.get("celsius", "N/A")
-                        else:
-                            temperature = temp_info
-                        
-                        # 날씨 설명
-                        description = data.get("description_korean", data.get("description", "N/A"))
-                        
-                        # 습도
-                        humidity = data.get("humidity", "N/A")
-                        
-                        # 바람 정보
-                        wind_info = data.get("wind", {})
-                        if isinstance(wind_info, dict):
-                            wind_speed = wind_info.get("speed", "N/A")
-                        else:
-                            wind_speed = wind_info
-                        
-                        # 체감온도
-                        feels_like_info = data.get("feels_like", {})
-                        if isinstance(feels_like_info, dict):
-                            feels_like = feels_like_info.get("celsius", "N/A")
-                        else:
-                            feels_like = feels_like_info
-                        
-                        # 일출/일몰
-                        sunrise = data.get("sunrise", "N/A")
-                        sunset = data.get("sunset", "N/A")
-                        
-                        response = f"📍 {location} 날씨 정보\n\n"
-                        response += f"🌡️ 기온: {temperature}°C\n"
-                        if feels_like != "N/A" and feels_like != temperature:
-                            response += f"💨 체감온도: {feels_like}°C\n"
-                        response += f"☁️ 날씨: {description}\n"
-                        response += f"💧 습도: {humidity}%\n"
-                        response += f"💨 풍속: {wind_speed}m/s\n"
-                        if sunrise != "N/A" and sunset != "N/A":
-                            response += f"🌅 일출: {sunrise} | 🌇 일몰: {sunset}\n"
-                        
-                        return response
+                    else:
+                        # result_data 자체가 data인 경우
+                        data = result_data
+                else:
+                    # weather_info 자체가 data인 경우
+                    data = weather_info
                 
-                # 기존 형식 지원
-                temperature = weather_info.get("temperature", weather_info.get("temp", "N/A"))
-                condition = weather_info.get("condition", weather_info.get("weather", "N/A"))
-                humidity = weather_info.get("humidity", "N/A")
-                wind_speed = weather_info.get("wind_speed", weather_info.get("wind", "N/A"))
+                # 구조화된 데이터에서 날씨 정보 추출
+                # 온도 정보
+                temp_info = data.get("temperature", {})
+                if isinstance(temp_info, dict):
+                    temperature = temp_info.get("celsius", "N/A")
+                else:
+                    temperature = temp_info
+                
+                # 날씨 설명
+                description = data.get("description_korean", data.get("description", "N/A"))
+                
+                # 습도
+                humidity = data.get("humidity", "N/A")
+                
+                # 바람 정보
+                wind_info = data.get("wind", {})
+                if isinstance(wind_info, dict):
+                    wind_speed = wind_info.get("speed", "N/A")
+                else:
+                    wind_speed = wind_info
+                
+                # 체감온도
+                feels_like_info = data.get("feels_like", {})
+                if isinstance(feels_like_info, dict):
+                    feels_like = feels_like_info.get("celsius", "N/A")
+                else:
+                    feels_like = feels_like_info
+                
+                # 일출/일몰
+                sunrise = data.get("sunrise", "N/A")
+                sunset = data.get("sunset", "N/A")
                 
                 response = f"📍 {location} 날씨 정보\n\n"
                 response += f"🌡️ 기온: {temperature}°C\n"
-                response += f"☁️ 날씨: {condition}\n"
+                if feels_like != "N/A" and feels_like != temperature:
+                    response += f"💨 체감온도: {feels_like}°C\n"
+                response += f"☁️ 날씨: {description}\n"
                 response += f"💧 습도: {humidity}%\n"
                 response += f"💨 풍속: {wind_speed}m/s\n"
+                if sunrise != "N/A" and sunset != "N/A":
+                    response += f"🌅 일출: {sunrise} | 🌇 일몰: {sunset}\n"
                 
+                logger.info(f"[날씨 포맷팅] 구조화된 데이터 응답 생성 완료")
                 return response
             else:
                 # 응답이 문자열인 경우 (JSON 문자열)
@@ -1105,15 +1125,11 @@ class MCPClientService:
         try:
             # MCP 서버의 실제 응답 형식에 맞게 수정
             if isinstance(stock_info, dict):
-                # MCP 서버 응답 구조: {"success": true, "result": {"success": true, ...}}
-                if "result" in stock_info and isinstance(stock_info["result"], dict):
-                    result_data = stock_info["result"]
-                    
-                    # 기본 정보
-                    company_name = "N/A"
-                    if "Basic Information" in result_data and isinstance(result_data["Basic Information"], dict):
-                        basic_info = result_data["Basic Information"]
-                        company_name = basic_info.get("Company Name", "N/A")
+                # 새로운 MCP 응답 형식 처리 (Basic Information, Financial Data 포함)
+                if "Basic Information" in stock_info and isinstance(stock_info["Basic Information"], dict):
+                    # 새로운 MCP 응답 형식
+                    basic_info = stock_info["Basic Information"]
+                    company_name = basic_info.get("Company Name", "N/A")
                     
                     # 회사명이 N/A인 경우 종목 코드로 대체
                     if company_name == "N/A":
@@ -1125,8 +1141,8 @@ class MCPClientService:
                     pb_ratio = "N/A"
                     dividend_yield = "N/A"
                     
-                    if "Financial Data" in result_data and isinstance(result_data["Financial Data"], dict):
-                        financial_data = result_data["Financial Data"]
+                    if "Financial Data" in stock_info and isinstance(stock_info["Financial Data"], dict):
+                        financial_data = stock_info["Financial Data"]
                         price = financial_data.get("Latest Stock Price", "N/A")
                         pe_ratio = financial_data.get("Price-Earnings Ratio", "N/A")
                         pb_ratio = financial_data.get("Price-Book Ratio", "N/A")
@@ -1135,13 +1151,32 @@ class MCPClientService:
                     # 데이터 신선도
                     data_source = "N/A"
                     data_quality = "N/A"
-                    if "Data Freshness" in result_data and isinstance(result_data["Data Freshness"], dict):
-                        freshness = result_data["Data Freshness"]
+                    if "Data Freshness" in stock_info and isinstance(stock_info["Data Freshness"], dict):
+                        freshness = stock_info["Data Freshness"]
                         data_source = freshness.get("Data Source", "N/A")
                         data_quality = freshness.get("Data Quality", "N/A")
                     
                     response = f"📈 {company_name} ({stock_code}) 주식 정보\n\n"
-                    response += f"💰 현재가: {price:,}원\n"
+                    
+                    # 현재가 포맷팅 (숫자 타입 처리) - 소숫점 제거하고 천단위 콤마 적용
+                    if isinstance(price, (int, float)) and price != "N/A":
+                        # 소숫점 제거하고 천단위 콤마 적용
+                        formatted_price = f"{int(price):,}"
+                        response += f"💰 현재가: {formatted_price}원\n"
+                    elif isinstance(price, str) and price != "N/A":
+                        # 문자열인 경우 숫자로 변환 시도
+                        try:
+                            # 소숫점이 포함된 경우 제거
+                            if '.' in price:
+                                price = price.split('.')[0]
+                            numeric_price = int(price)
+                            formatted_price = f"{numeric_price:,}"
+                            response += f"💰 현재가: {formatted_price}원\n"
+                        except (ValueError, TypeError):
+                            response += f"💰 현재가: {price}원\n"
+                    else:
+                        response += f"💰 현재가: {price}원\n"
+                    
                     response += f"📊 PER: {pe_ratio}\n"
                     response += f"📊 PBR: {pb_ratio}\n"
                     response += f"💰 배당수익률: {dividend_yield}%\n"
@@ -1158,14 +1193,85 @@ class MCPClientService:
                 market_cap = stock_info.get("market_cap", stock_info.get("market_capitalization", "N/A"))
                 
                 response = f"📈 {name} ({stock_code}) 주식 정보\n\n"
-                response += f"💰 현재가: {price:,}원\n"
                 
-                if change != "N/A" and change != 0:
+                # 현재가 포맷팅 (숫자 타입 처리) - 소숫점 제거하고 천단위 콤마 적용
+                if isinstance(price, (int, float)) and price != "N/A":
+                    # 소숫점 제거하고 천단위 콤마 적용
+                    formatted_price = f"{int(price):,}"
+                    response += f"💰 현재가: {formatted_price}원\n"
+                elif isinstance(price, str) and price != "N/A":
+                    # 문자열인 경우 숫자로 변환 시도
+                    try:
+                        # 소숫점이 포함된 경우 제거
+                        if '.' in price:
+                            price = price.split('.')[0]
+                        numeric_price = int(price)
+                        formatted_price = f"{numeric_price:,}"
+                        response += f"💰 현재가: {formatted_price}원\n"
+                    except (ValueError, TypeError):
+                        response += f"💰 현재가: {price}원\n"
+                else:
+                    response += f"💰 현재가: {price}원\n"
+                
+                # 변동 포맷팅 (숫자 타입 처리) - 소숫점 제거하고 천단위 콤마 적용
+                if isinstance(change, (int, float)) and change != "N/A" and change != 0:
                     change_symbol = "📈" if change >= 0 else "📉"
-                    response += f"{change_symbol} 변동: {change:+,}원 ({change_rate:+.2f}%)\n"
+                    # 소숫점 제거하고 천단위 콤마 적용
+                    formatted_change = f"{int(change):+,}"
+                    response += f"{change_symbol} 변동: {formatted_change}원 ({change_rate:+.2f}%)\n"
+                elif isinstance(change, str) and change != "N/A" and change != "0":
+                    change_symbol = "📈" if not change.startswith('-') else "📉"
+                    # 문자열인 경우 숫자로 변환 시도
+                    try:
+                        # 소숫점이 포함된 경우 제거
+                        if '.' in change:
+                            change = change.split('.')[0]
+                        numeric_change = int(change)
+                        formatted_change = f"{numeric_change:+,}"
+                        response += f"{change_symbol} 변동: {formatted_change}원 ({change_rate}%)\n"
+                    except (ValueError, TypeError):
+                        response += f"{change_symbol} 변동: {change}원 ({change_rate}%)\n"
+                elif change != "N/A" and change != 0:
+                    change_symbol = "📈" if change >= 0 else "📉"
+                    response += f"{change_symbol} 변동: {change}원 ({change_rate}%)\n"
                 
-                response += f"📊 거래량: {volume:,}주\n"
-                response += f"🏢 시가총액: {market_cap:,}원\n"
+                # 거래량 포맷팅 (숫자 타입 처리) - 소숫점 제거하고 천단위 콤마 적용
+                if isinstance(volume, (int, float)) and volume != "N/A":
+                    # 소숫점 제거하고 천단위 콤마 적용
+                    formatted_volume = f"{int(volume):,}"
+                    response += f"📊 거래량: {formatted_volume}주\n"
+                elif isinstance(volume, str) and volume != "N/A":
+                    # 문자열인 경우 숫자로 변환 시도
+                    try:
+                        # 소숫점이 포함된 경우 제거
+                        if '.' in volume:
+                            volume = volume.split('.')[0]
+                        numeric_volume = int(volume)
+                        formatted_volume = f"{numeric_volume:,}"
+                        response += f"📊 거래량: {formatted_volume}주\n"
+                    except (ValueError, TypeError):
+                        response += f"📊 거래량: {volume}주\n"
+                else:
+                    response += f"📊 거래량: {volume}주\n"
+                
+                # 시가총액 포맷팅 (숫자 타입 처리) - 소숫점 제거하고 천단위 콤마 적용
+                if isinstance(market_cap, (int, float)) and market_cap != "N/A":
+                    # 소숫점 제거하고 천단위 콤마 적용
+                    formatted_market_cap = f"{int(market_cap):,}"
+                    response += f"🏢 시가총액: {formatted_market_cap}원\n"
+                elif isinstance(market_cap, str) and market_cap != "N/A":
+                    # 문자열인 경우 숫자로 변환 시도
+                    try:
+                        # 소숫점이 포함된 경우 제거
+                        if '.' in market_cap:
+                            market_cap = market_cap.split('.')[0]
+                        numeric_market_cap = int(market_cap)
+                        formatted_market_cap = f"{numeric_market_cap:,}"
+                        response += f"🏢 시가총액: {formatted_market_cap}원\n"
+                    except (ValueError, TypeError):
+                        response += f"🏢 시가총액: {market_cap}원\n"
+                else:
+                    response += f"🏢 시가총액: {market_cap}원\n"
                 
                 return response
             else:
@@ -1461,7 +1567,13 @@ class MCPClientService:
                     })
                     if stock_data.get("success"):
                         # 주식 코드를 응답 데이터에 포함
-                        stock_response = stock_data.get("data", {})
+                        mcp_response = stock_data.get("data", {})
+                        # 새로운 MCP 응답 형식 처리
+                        if "result" in mcp_response and isinstance(mcp_response["result"], dict):
+                            stock_response = mcp_response["result"]
+                        else:
+                            # 기존 형식 지원
+                            stock_response = mcp_response
                         stock_response["code"] = stock_code  # 주식 코드 추가
                         mcp_data["stock"] = stock_response
                         logger.info(f"[MCP RAG 통합] ✅ 주식 데이터 성공적으로 추가됨: {stock_code}")
@@ -1564,7 +1676,12 @@ class MCPClientService:
                             # _make_mcp_request에서 {"success": True, "data": result} 형태로 래핑하므로
                             # 실제 MCP 서버 응답은 stock_data["data"]에 있음
                             mcp_response = stock_data.get("data", {})
-                            stock_response = mcp_response.get("result", mcp_response)
+                            # 새로운 MCP 응답 형식 처리
+                            if "result" in mcp_response and isinstance(mcp_response["result"], dict):
+                                stock_response = mcp_response["result"]
+                            else:
+                                # 기존 형식 지원
+                                stock_response = mcp_response
                             stock_response["code"] = stock_code  # 주식 코드 추가
                             mcp_data["stock"] = stock_response
                             logger.info(f"[MCP RAG 통합] ✅ 주식 데이터 성공적으로 추가됨: {stock_code}")
@@ -1643,6 +1760,7 @@ class MCPClientService:
         """RAG 컨텍스트와 MCP 데이터를 통합하여 응답을 생성합니다."""
         try:
             logger.info(f"[통합 응답 생성] 시작 - mcp_data 키: {list(mcp_data.keys())}")
+            logger.info(f"[통합 응답 생성] RAG 컨텍스트 길이: {len(context) if context else 0}")
             response_parts = []
             
             # MCP 데이터 처리
@@ -1678,17 +1796,31 @@ class MCPClientService:
                 response_parts.append(search_response)
                 logger.info(f"[통합 응답 생성] ✅ 검색 응답 생성 완료")
             
-
+            # RAG 컨텍스트 처리 로직 추가
+            if context and context.strip():
+                logger.info(f"[통합 응답 생성] RAG 컨텍스트 처리 시작 - 길이: {len(context)}")
+                
+                if not response_parts:
+                    # MCP 데이터가 없는 경우, RAG 컨텍스트만 사용
+                    logger.info(f"[통합 응답 생성] MCP 데이터 없음 - RAG 컨텍스트만 사용")
+                    rag_response = f"검색된 정보를 바탕으로 답변드리겠습니다:\n\n{context}"
+                    response_parts.append(rag_response)
+                    logger.info(f"[통합 응답 생성] ✅ RAG 응답 생성 완료")
+                else:
+                    # MCP 데이터와 RAG 컨텍스트가 모두 있는 경우, 추가 정보로 제공
+                    logger.info(f"[통합 응답 생성] MCP 데이터와 RAG 컨텍스트 모두 있음 - 추가 정보로 제공")
+                    rag_supplement = f"\n\n📚 추가 참고 정보:\n{context}"
+                    response_parts.append(rag_supplement)
+                    logger.info(f"[통합 응답 생성] ✅ RAG 추가 정보 생성 완료")
             
             # 응답 조합
             logger.info(f"[통합 응답 생성] 응답 조합 시작 - response_parts 개수: {len(response_parts)}")
             if response_parts:
                 response = "\n\n".join(response_parts)
-                logger.info(f"[통합 응답 생성] ✅ MCP 응답 생성 완료 (길이: {len(response)}자)")
+                logger.info(f"[통합 응답 생성] ✅ 통합 응답 생성 완료 (길이: {len(response)}자)")
             else:
-                # MCP 데이터가 없는 경우, 일반적인 질문에 대한 응답을 생성
-                # 이는 MCP 서버가 연결되지 않았거나 관련 정보를 제공하지 못한 경우
-                logger.warning(f"[통합 응답 생성] ❌ MCP 데이터가 없음 - 폴백 응답 생성")
+                # MCP 데이터와 RAG 컨텍스트가 모두 없는 경우
+                logger.warning(f"[통합 응답 생성] ❌ MCP 데이터와 RAG 컨텍스트 모두 없음 - 폴백 응답 생성")
                 if "뭐야" in user_prompt or "무엇" in user_prompt or "어떤" in user_prompt:
                     response = "죄송합니다. MCP 서버에 연결할 수 없어 실시간 정보를 제공할 수 없습니다. 일반적인 질문에 대해서는 AI 모델의 기본 지식으로 답변드리겠습니다."
                 else:

@@ -981,7 +981,7 @@
         }
 
         .mcp-checkbox-container {
-            display: flex;
+            display: none; /* MCP 사용 체크박스 숨김 */
             align-items: center;
             gap: 6px;
             background: rgba(52, 152, 219, 0.1);
@@ -3060,7 +3060,7 @@
                     },
                     body: JSON.stringify({
                         message: `${location} 날씨`,
-                        model: currentModel,
+                        model: selectedModel,
                         session_id: currentSessionId
                     })
                 });
@@ -3094,7 +3094,7 @@
                     },
                     body: JSON.stringify({
                         message: `${stockCode} 주가`,
-                        model: currentModel,
+                        model: selectedModel,
                         session_id: currentSessionId
                     })
                 });
@@ -3128,7 +3128,7 @@
                     },
                     body: JSON.stringify({
                         message: query,
-                        model: currentModel,
+                        model: selectedModel,
                         session_id: currentSessionId
                     })
                 });
@@ -3162,7 +3162,7 @@
                     },
                     body: JSON.stringify({
                         message: query,
-                        model: currentModel,
+                        model: selectedModel,
                         session_id: currentSessionId
                     })
                 });

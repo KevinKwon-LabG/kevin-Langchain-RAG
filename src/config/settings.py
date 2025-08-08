@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     chroma_anonymized_telemetry: bool = False
     
     # 임베딩 모델 설정
-    embedding_model_name: str = "nlpai-lab/KURE-v1"  # KURE (Korea University Retrieval Embedding)
+    embedding_model_name: str = "all-MiniLM-L6-v2"  # 384차원 임베딩 모델 (외부 RAG 호환)
     embedding_device: str = "cpu"
     huggingface_api_key: Optional[str] = None
     
@@ -286,6 +286,23 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 return v
         return v
+    
+    # =============================================================================
+    # 외부 RAG 서버 설정
+    # =============================================================================
+    external_rag_enabled: bool = True  # 외부 RAG 서비스 활성화
+    external_rag_url: str = "http://1.237.52.240:8600"
+    external_rag_tenant_id: str = "550e8400-e29b-41d4-a716-446655440000"
+    external_rag_db_name: str = "default-db"
+    external_rag_collection_id: str = "0d6ca41b-cd1c-4c84-a90e-ba2d4527c81a"
+    external_rag_timeout: int = 30
+    external_rag_fallback_to_local: bool = True  # 외부 RAG 실패 시 로컬 RAG로 폴백
+    external_rag_max_retries: int = 3
+    external_rag_health_check_interval: int = 300  # 5분마다 헬스 체크
+    
+    # 외부 RAG 사용 통계
+    external_rag_stats_enabled: bool = True
+    external_rag_stats_file: str = "data/external_rag_stats.json"
     
     # =============================================================================
     # MCP 서버 설정

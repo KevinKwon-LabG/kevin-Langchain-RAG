@@ -17,29 +17,27 @@ ollama/
 ├── 📁 src/                          # 소스 코드 메인 디렉토리
 │   ├── 📁 api/                      # API 엔드포인트
 │   │   └── 📁 endpoints/            # API 라우터들
-│   │       ├── chat.py              # 채팅 기능 API (940줄)
-│   │       ├── weather.py           # 날씨 서비스 API (134줄)
-│   │       ├── stock.py             # 주식 서비스 API (224줄)
-│   │       ├── web_search.py        # 웹 검색 서비스 API (219줄)
-│   │       ├── # 의사결정 API는 현재 사용하지 않음
-│   │       ├── documents.py         # 문서 관리 API (339줄)
-│   │       ├── health.py            # 헬스 체크 API (201줄)
-│   │       ├── models.py            # 모델 관리 API (117줄)
-│   │       ├── sessions.py          # 세션 관리 API (152줄)
-│   │       └── settings.py          # 설정 관리 API (167줄)
+│   │       ├── chat.py              # 채팅 기능 API
+│   │       ├── documents.py         # 문서 관리 API
+│   │       ├── excel_embedding.py   # 엑셀 임베딩 API
+│   │       ├── external_rag.py      # 외부 RAG 연동 API (Chroma v2)
+│   │       ├── health.py            # 헬스 체크 API
+│   │       ├── models.py            # 모델 관리 API
+│   │       ├── sessions.py          # 세션 관리 API
+│   │       ├── settings.py          # 설정 관리 API
+│   │       └── word_embedding.py    # 워드 임베딩 API
 │   ├── 📁 config/                   # 설정 관리
 │   │   └── settings.py              # 애플리케이션 설정 (422줄)
 │   ├── 📁 models/                   # 데이터 모델
 │   │   └── schemas.py               # Pydantic 스키마 (85줄)
 │   ├── 📁 services/                 # 비즈니스 로직 서비스
-│   │   ├── weather_service.py       # 날씨 서비스 (119줄)
-│   │   ├── stock_service.py         # 주식 서비스 (217줄)
-│   │   ├── web_search_service.py    # 웹 검색 서비스 (251줄)
-│   │   ├── document_service.py      # 문서 처리 서비스 (321줄)
-│   │   ├── # LangChain 의사결정 서비스는 현재 사용하지 않음
-│   │   ├── mcp_client_service.py    # MCP 클라이언트 서비스 (1513줄)
-│   │   ├── rag_service.py           # RAG 서비스 (420줄)
-│   │   └── session_service.py       # 세션 관리 서비스 (160줄)
+│   │   ├── document_service.py      # 문서 처리 서비스
+│   │   ├── excel_embedding_service.py# 엑셀 임베딩 서비스
+│   │   ├── external_rag_service.py  # 외부 RAG 유틸/상태 관리
+│   │   ├── mcp_client_service.py    # MCP 클라이언트 서비스
+│   │   ├── rag_service.py           # RAG 서비스
+│   │   ├── session_service.py       # 세션 관리 서비스
+│   │   └── word_embedding_service.py# 워드 임베딩 서비스
 │   ├── 📁 utils/                    # 유틸리티
 │   │   └── session_manager.py       # 세션 관리 유틸리티 (220줄)
 │   └── main.py                      # FastAPI 메인 애플리케이션 (161줄)
@@ -120,6 +118,77 @@ ollama/
 - 검색 결과 포맷팅 및 요약
 
 ## 🛠️ 기술 스택
+
+## 🧭 프롬프트 → 응답 처리 플로우
+
+아래 다이어그램은 사용자가 프롬프트를 입력한 뒤 응답이 생성되어 스트리밍으로 전달되기까지의 핵심 흐름을 요약합니다. 실제 로직은 `POST /api/chat/` 엔드포인트에서 처리됩니다.
+
+```mermaid
+flowchart TD
+    A[사용자 프롬프트 입력<br/>UI 또는 클라이언트] --> B[POST /api/chat/<br/>ChatRequest]
+    B --> C[세션 확보/생성<br/>get_or_create_session]
+    C --> D{MCP 대기 상태?}<br/>weather/stock
+    D -- 예 --> E[_generate_mcp_response]
+    D -- 아니오 --> F{MCP 사용 결정?}<br/>use_mcp && _should_use_mcp
+    F -- 예 --> E[_generate_mcp_response]
+    F -- 아니오 --> G{RAG 사용?}<br/>use_rag
+    G -- 예 --> H[rag_service.generate_rag_response<br/>use_external_rag 전달]
+    G -- 아니오 --> I[Ollama /api/generate<br/>직접 호출]
+    E --> J[세션에 대화 로그 기록]
+    H --> J
+    I --> J
+    J --> K[StreamingResponse 생성]
+    K --> L[청크 단위 전송<br/>data: { response: chunk }]
+    L --> M[완료 메타 전송<br/>done, rag_used, mcp_used,<br/>external_rag_used, context_score]
+```
+
+### 간단 설명
+- **세션 관리**: 요청의 `session_id`가 없으면 새 세션을 생성합니다.
+- **MCP(도구 호출) 판단**: 세션에 대기 상태가 있거나, `_should_use_mcp`가 참이면 MCP 경로로 분기합니다.
+- **RAG 분기**: MCP를 사용하지 않는 경우 `use_rag`가 참이면 RAG 응답을 생성합니다. `use_external_rag`가 함께 전달되어 외부 RAG 사용 여부를 제어합니다.
+- **직접 LLM 호출**: RAG 비사용 시 Ollama의 `/api/generate`를 호출하여 응답을 생성합니다.
+- **스트리밍 전송**: 응답은 50자 청크로 `text/plain` SSE 스타일로 전송되며, 마지막에 메타 정보가 함께 전송됩니다.
+
+```mermaid
+sequenceDiagram
+    participant UI as 클라이언트/UI
+    participant API as FastAPI /api/chat
+    participant MCP as MCP Client Service
+    participant RAG as RAG Service
+    participant OLL as Ollama Server
+
+    UI->>API: POST /api/chat (ChatRequest)
+    API->>API: 세션 생성/조회
+    alt MCP 필요 또는 대기 상태
+        API->>MCP: process_* 호출 (weather/stock/search or integrated)
+        MCP-->>API: mcp_response
+    else MCP 불필요
+        alt use_rag == true
+            API->>RAG: generate_rag_response(use_external_rag 포함)
+            RAG-->>API: rag_result(response, rag_used ...)
+        else use_rag == false
+            API->>OLL: /api/generate
+            OLL-->>API: response
+        end
+    end
+    API->>API: 세션에 user/assistant 메시지 기록
+    API-->>UI: StreamingResponse (chunk -> done 메타)
+```
+
+### 요청 포맷 요약 (ChatRequest)
+- **model**: 사용할 모델명 (예: `gemma3:12b-it-qat`)
+- **message**: 사용자 프롬프트
+- **session_id**: 선택, 미지정 시 자동 생성
+- **use_rag**: RAG 사용 여부 (기본 true)
+- **use_external_rag**: 외부 RAG 사용 여부 (기본 true)
+- **use_mcp**: MCP 사용 여부 (기본 true)
+- **rag_top_k, system, options**: 검색 및 생성 옵션
+
+### 스트리밍 응답 형식
+- 본문 타입: `text/plain`
+- 전송: SSE 스타일 라인 단위
+  - 데이터 청크: `data: {"response": "...", "session_id": "..."}`
+  - 완료 메타: `data: {"done": true, "rag_used": bool, "external_rag_used": bool, "mcp_used": bool, ...}`
 
 ### **백엔드**
 - **FastAPI**: 고성능 웹 프레임워크

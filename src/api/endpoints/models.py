@@ -6,6 +6,7 @@ Ollama 모델 관리 및 조회를 위한 API를 제공합니다.
 import logging
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
+import requests
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -16,22 +17,51 @@ router = APIRouter()
 @router.get("/api/models")
 async def get_models():
     """
-    사용 가능한 Ollama 모델 목록을 반환합니다.
+    현재 Ollama 서버에서 실행 중인 모델 목록을 반환합니다.
     
     Returns:
         모델 목록
     """
     try:
-        # 실제 구현에서는 Ollama API를 호출하여 모델 목록을 가져옵니다
-        models = [
-            {"name": "gemma3:12b-it-qat", "size": "8.9 GB", "id": "5d4fa005e7bb"},
-            {"name": "deepseek-v2:16b-lite-chat-q8_0", "size": "16 GB", "id": "1d62ef756269"},
-            {"name": "qwen3:14b-q8_0", "size": "15 GB", "id": "304bf7349c71"},
-            {"name": "deepseek-r1:14b", "size": "9.0 GB", "id": "c333b7232bdb"},
-            {"name": "llama3.2-vision:11b-instruct-q4_K_M", "size": "7.8 GB", "id": "6f2f9757ae97"},
-            {"name": "llama3.1:8b", "size": "4.9 GB", "id": "46e0c10c039e"}
-        ]
-        return {"models": models}
+        # Ollama API에서 현재 실행 중(running) 모델 목록 가져오기
+        from src.config.settings import get_settings
+        settings = get_settings()
+
+        response = requests.get(f"{settings.ollama_base_url}/api/ps", timeout=10)
+        response.raise_for_status()
+        data = response.json() or {}
+
+        running_models = []
+        for model in data.get("models", []):
+            # name, digest, size(바이트) 추출
+            name = model.get("name") or model.get("model") or "unknown"
+            digest = model.get("digest") or name
+
+            size_bytes = model.get("size") or model.get("size_bytes")
+            size_str = "N/A"
+            if isinstance(size_bytes, (int, float)) and size_bytes > 0:
+                size_gb = float(size_bytes) / (1024 ** 3)
+                size_str = f"{size_gb:.1f} GB"
+
+            running_models.append({
+                "name": name,
+                "size": size_str,
+                "id": digest,
+                "is_running": True
+            })
+
+        # 기본 모델을 최상단으로 정렬 (없으면 순서 유지)
+        try:
+            default_model_name = settings.default_model
+        except Exception:
+            default_model_name = "gemma3:12b-it-qat"
+
+        if running_models:
+            preferred = [m for m in running_models if m.get("name") == default_model_name]
+            others = [m for m in running_models if m.get("name") != default_model_name]
+            running_models = preferred + others
+
+        return {"models": running_models}
     except Exception as e:
         logger.error(f"모델 목록 조회 중 오류: {e}")
         raise HTTPException(status_code=500, detail=f"모델 목록 조회 실패: {str(e)}")

@@ -46,11 +46,14 @@ async def chat(request: ChatRequest):
         # RAG 사용 여부 확인
         use_rag = getattr(request, 'use_rag', True)
         
+        # 외부 RAG 사용 여부 확인
+        use_external_rag = getattr(request, 'use_external_rag', True)
+        
         # MCP 사용 여부 확인
         use_mcp = getattr(request, 'use_mcp', True)
         
         # AI 응답 생성
-        return await _generate_ai_response(request, session, use_rag, use_mcp)
+        return await _generate_ai_response(request, session, use_rag, use_external_rag, use_mcp)
         
     except Exception as e:
         logger.error(f"채팅 요청 처리 중 오류: {e}", exc_info=True)
@@ -75,7 +78,7 @@ async def chat(request: ChatRequest):
             }
         )
 
-async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, use_mcp: bool):
+async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, use_external_rag: bool, use_mcp: bool):
     """
     AI 응답을 생성합니다.
     
@@ -93,12 +96,12 @@ async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, us
         pending_state = mcp_client_service.get_pending_state(session.session_id)
         if pending_state["weather_request_pending"] or pending_state["stock_request_pending"]:
             logger.info(f"MCP 요청 대기 상태 감지: weather={pending_state['weather_request_pending']}, stock={pending_state['stock_request_pending']}")
-            return await _generate_mcp_response(request, session, use_rag)
+            return await _generate_mcp_response(request, session, use_rag, use_external_rag)
         
         # MCP 서비스 사용 여부 확인 - UI 설정을 우선적으로 고려
         if use_mcp and mcp_client_service._should_use_mcp(request.message, request.model, session.session_id, ui_mcp_enabled=use_mcp):
             logger.info(f"[채팅 API] MCP 서비스 사용 (UI에서 MCP 사용 허용됨) - 질문: {request.message}")
-            return await _generate_mcp_response(request, session, use_rag)
+            return await _generate_mcp_response(request, session, use_rag, use_external_rag)
         elif use_mcp:
             logger.info(f"[채팅 API] UI에서 MCP 사용이 허용되었지만, 쿼리 분석 결과 MCP 서비스 사용이 불필요함 - 질문: {request.message}")
         else:
@@ -114,11 +117,13 @@ async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, us
                 top_k=getattr(request, 'rag_top_k', 5),
                 system_prompt=getattr(request, 'system', settings.default_system_prompt),
                 use_mcp=use_mcp,  # UI 체크박스 상태
-                session_id=session.session_id
+                session_id=session.session_id,
+                use_external_rag=use_external_rag  # 외부 RAG 사용 여부
             )
             
             response = rag_result.get('response', 'RAG 응답을 생성할 수 없습니다.')
             context_used = rag_result.get('rag_used', False)
+            external_rag_used = rag_result.get('external_rag_used', False)
             context_score = rag_result.get('context_score', 0.0)
             context_quality = rag_result.get('context_quality', 'low')
             mcp_used = rag_result.get('mcp_used', False)
@@ -153,6 +158,7 @@ async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, us
                 response = f"AI 응답 생성 중 오류가 발생했습니다: {str(e)}"
             
             context_used = False
+            external_rag_used = False
             context_score = 0.0
             context_quality = 'none'
             mcp_used = False
@@ -175,6 +181,7 @@ async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, us
                     'session_id': request.session_id, 
                     'service': 'ai',
                     'rag_used': context_used,
+                    'external_rag_used': external_rag_used,
                     'mcp_used': mcp_used,
                     'context_score': context_score,
                     'context_quality': context_quality
@@ -221,7 +228,7 @@ async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, us
             }
         )
 
-async def _generate_mcp_response(request: ChatRequest, session, use_rag: bool):
+async def _generate_mcp_response(request: ChatRequest, session, use_rag: bool, use_external_rag: bool):
     """
     MCP 서비스를 사용하여 응답을 생성합니다.
     
@@ -272,7 +279,7 @@ async def _generate_mcp_response(request: ChatRequest, session, use_rag: bool):
             else:
                 # 일반 AI 응답으로 폴백
                 logger.info(f"[채팅 API] MCP 사용하지 않음, 일반 AI 응답으로 폴백 - 질문: {request.message}")
-                return await _generate_ai_response(request, session, use_rag, False)
+                return await _generate_ai_response(request, session, use_rag, use_external_rag, False)
         
         # MCP 응답 결과 로깅
         logger.info(f"[채팅 API] MCP 응답 완료 - 성공: {mcp_success}")
@@ -320,7 +327,7 @@ async def _generate_mcp_response(request: ChatRequest, session, use_rag: bool):
     except Exception as e:
         logger.error(f"MCP 응답 생성 중 오류: {e}", exc_info=True)
         # 오류 발생 시 일반 AI 응답으로 폴백
-        return await _generate_ai_response(request, session, use_rag, False)
+        return await _generate_ai_response(request, session, use_rag, use_external_rag, False)
 
 @router.post("/mcp/weather")
 async def mcp_weather(request: ChatRequest):

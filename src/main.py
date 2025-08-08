@@ -15,21 +15,6 @@ from datetime import datetime
 # API 엔드포인트 라우터들 import
 from src.api.endpoints import chat, health, models, sessions, settings as settings_router, documents, word_embedding, excel_embedding
 
-# 새로운 서비스 라우터들 import
-try:
-    from src.api.endpoints import weather, stock, web_search
-    WEATHER_SERVICE_AVAILABLE = True
-    STOCK_SERVICE_AVAILABLE = True
-    WEB_SEARCH_SERVICE_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️ 일부 서비스 라우터를 로드할 수 없습니다: {e}")
-    WEATHER_SERVICE_AVAILABLE = False
-    STOCK_SERVICE_AVAILABLE = False
-    WEB_SEARCH_SERVICE_AVAILABLE = False
-
-# 의사결정 서비스는 현재 사용하지 않음
-DECISION_SERVICE_AVAILABLE = False
-
 
 # 로깅 설정
 logging.basicConfig(level=logging.WARNING)
@@ -66,6 +51,29 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+# 외부 RAG 서비스 헬스 체크 시작
+@app.on_event("startup")
+async def startup_event():
+    """애플리케이션 시작 시 실행되는 이벤트"""
+    try:
+        from src.services.rag_service import rag_service
+        if hasattr(rag_service, 'external_rag_service'):
+            rag_service.external_rag_service.start_health_check()
+            logger.info("외부 RAG 서비스 헬스 체크 시작됨")
+    except Exception as e:
+        logger.error(f"외부 RAG 서비스 헬스 체크 시작 실패: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """애플리케이션 종료 시 실행되는 이벤트"""
+    try:
+        from src.services.rag_service import rag_service
+        if hasattr(rag_service, 'external_rag_service'):
+            rag_service.external_rag_service.stop_health_check()
+            logger.info("외부 RAG 서비스 헬스 체크 중지됨")
+    except Exception as e:
+        logger.error(f"외부 RAG 서비스 헬스 체크 중지 실패: {e}")
+
 
 # API 라우터 등록 - 각 기능별 라우터를 FastAPI 앱에 등록하여 모듈화된 API 구조 구성
 app.include_router(chat.router, prefix="", tags=["Chat"]) # 채팅 기능 라우터 - Ollama 모델과의 대화, 세션 관리 등
@@ -77,29 +85,13 @@ app.include_router(documents.router, prefix="", tags=["Documents"]) # 문서 관
 app.include_router(word_embedding.router, prefix="", tags=["Word Embedding"]) # 워드 임베딩 라우터 - 워드 문서 RAG 처리 및 검색
 app.include_router(excel_embedding.router, prefix="", tags=["Excel Embedding"]) # 엑셀 임베딩 라우터 - 엑셀 문서 RAG 처리 및 검색
 
-# 새로운 서비스 라우터들 등록
-if WEATHER_SERVICE_AVAILABLE:
-    app.include_router(weather.router) # 날씨 서비스 라우터 - 날씨 정보 조회, 예보 등
-if STOCK_SERVICE_AVAILABLE:
-    app.include_router(stock.router) # 주식 서비스 라우터 - 주식 시세, 정보 조회 등
-if WEB_SEARCH_SERVICE_AVAILABLE:
-    app.include_router(web_search.router) # 웹 검색 서비스 라우터 - 웹 검색, 정보 검색 등
-
-# 의사결정 서비스는 현재 사용하지 않음
+# 외부 RAG 라우터 등록
+from src.api.endpoints import external_rag
+app.include_router(external_rag.router, prefix="", tags=["External RAG"]) # 외부 RAG 라우터 - 외부 Chroma API 연동
 
 
 
-@app.get("/test-weather", response_class=HTMLResponse)
-async def test_weather_page():
-    """
-    날씨 API 테스트 페이지를 반환합니다.
-    """
-    try:
-        with open("test_weather.html", "r", encoding="utf-8") as f:
-            content = f.read()
-        return HTMLResponse(content=content)
-    except FileNotFoundError:
-        return HTMLResponse(content="<h1>테스트 페이지를 찾을 수 없습니다.</h1>")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):

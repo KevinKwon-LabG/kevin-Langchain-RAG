@@ -11,6 +11,7 @@ from langchain_ollama import OllamaLLM
 from src.config.settings import settings
 from src.services.document_service import document_service
 from src.services.mcp_client_service import mcp_client_service
+from src.services.external_rag_service import ExternalRAGService
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class RAGService:
         self.rag_directory = Path("static/RAG")
         
         # 설정에서 값 가져오기 - RAG 의존도를 낮추기 위해 더 엄격한 설정
-        self.similarity_threshold = max(settings.default_similarity_threshold, 0.95)  # 최소 0.95로 설정
+        self.similarity_threshold = max(settings.default_similarity_threshold, 0.85)  # 최소 0.85로 설정
         self.context_weight = 0.5  # 컨텍스트 가중치 감소
         self.min_context_length = 150  # 최소 컨텍스트 길이 증가
         self.max_context_length = 1500  # 최대 컨텍스트 길이 감소
@@ -85,7 +86,7 @@ class RAGService:
         
         # RAG 사용 여부 판단을 위한 변수들 - 더 엄격하게 설정
         self.min_avg_score_for_rag = 0.96  # RAG 사용을 위한 최소 평균 유사도 점수 증가
-        self.max_context_chunks = 2  # 최대 컨텍스트 청크 수 감소
+        self.max_context_chunks = 4  # 최대 컨텍스트 청크 수 증가
         
         # RAG 사용 빈도 제한을 위한 변수들
         self.rag_usage_count = 0  # RAG 사용 횟수
@@ -104,6 +105,9 @@ class RAGService:
         
         # RAG 디렉토리 초기화 및 문서 로드
         self._initialize_rag_documents()
+        
+        # 외부 RAG 서비스 초기화
+        self.external_rag_service = ExternalRAGService(settings)
     
     def _initialize_rag_documents(self):
         """RAG 디렉토리의 문서들을 벡터 저장소에 로드합니다."""
@@ -243,9 +247,77 @@ class RAGService:
             logger.error(f"RAG 컨텍스트 검색 실패: {e}")
             return "", []
     
+    async def retrieve_context_with_external_rag(self, query: str, top_k: int = 5, 
+                                                use_external_rag: bool = True) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        외부 RAG를 우선 사용하여 컨텍스트를 검색합니다.
+        
+        Args:
+            query: 검색 쿼리
+            top_k: 검색할 문서 수
+            use_external_rag: 외부 RAG 사용 여부
+            
+        Returns:
+            Tuple[str, List[Dict]]: (컨텍스트 문자열, 검색 결과 리스트)
+        """
+        try:
+            # 외부 RAG 우선 시도 (활성화된 경우)
+            context = ""
+            context_sources = []
+            
+            if use_external_rag and self.external_rag_service.enabled:
+                logger.info("외부 RAG 서비스 시도 중...")
+                external_result = await self.external_rag_service.query(query, top_k)
+                
+                if external_result["success"] and external_result["total_results"] > 0:
+                    # 외부 RAG 성공 시 결과 사용
+                    context_parts = []
+                    
+                    for result in external_result["results"]:
+                        if result.get("document"):
+                            context_parts.append(result["document"])
+                    
+                    context = "\n\n".join(context_parts)
+                    context_sources = [
+                        {
+                            "content": result.get("document", ""),
+                            "metadata": result.get("metadata", {}),
+                            "score": 0.9 if result.get("distance") is None else (1.0 - result.get("distance", 0)),  # 외부 RAG는 기본 높은 점수
+                            "source": "external_rag"
+                        }
+                        for result in external_result["results"]
+                    ]
+                    
+                    logger.info(f"외부 RAG 사용: {len(context_sources)}개 결과, 응답시간: {external_result.get('response_time', 0):.3f}초")
+                else:
+                    logger.info(f"외부 RAG 실패: {external_result.get('message', '알 수 없는 오류')}")
+                    
+                    # 폴백 설정이 활성화된 경우 로컬 RAG 사용
+                    if self.external_rag_service.fallback_to_local:
+                        logger.info("로컬 RAG로 폴백...")
+                        context, context_sources = self.retrieve_context(query, top_k)
+                    else:
+                        logger.warning("외부 RAG 실패 및 폴백 비활성화로 인해 컨텍스트 없음")
+            else:
+                # 외부 RAG 비활성화된 경우 로컬 RAG 사용
+                if not use_external_rag:
+                    logger.info("외부 RAG 비활성화, 로컬 RAG 사용")
+                else:
+                    logger.info("외부 RAG 서비스 비활성화, 로컬 RAG 사용")
+                
+                context, context_sources = self.retrieve_context(query, top_k)
+            
+            return context, context_sources
+            
+        except Exception as e:
+            logger.error(f"외부 RAG 컨텍스트 검색 실패: {e}")
+            # 오류 발생 시 로컬 RAG로 폴백
+            return self.retrieve_context(query, top_k)
+    
     async def generate_rag_response(self, query: str, model_name: str = None, 
                             use_rag: bool = True, top_k: int = 5,
-                            system_prompt: str = None, use_mcp: bool = True, session_id: str = None) -> Dict[str, Any]:
+                            system_prompt: str = None, use_mcp: bool = True, session_id: str = None, 
+                            use_external_rag: bool = True) -> Dict[str, Any]:
         """
         RAG를 사용하여 AI 응답을 생성합니다.
         
@@ -282,8 +354,62 @@ class RAGService:
                     "context_length": 0
                 }
             
-            # 컨텍스트 검색
-            context, context_sources = self.retrieve_context(query, top_k)
+            # 외부 RAG 우선 시도 (활성화된 경우)
+            context = ""
+            context_sources = []
+            external_rag_used = False
+            
+            if use_external_rag and self.external_rag_service.enabled:
+                logger.info("외부 RAG 서비스 시도 중...")
+                external_result = await self.external_rag_service.query(query, top_k)
+                
+                if external_result["success"] and external_result["total_results"] > 0:
+                    # 외부 RAG 성공 시 결과 사용
+                    external_rag_used = True
+                    context_parts = []
+                    
+                    for result in external_result["results"]:
+                        if result.get("document"):
+                            context_parts.append(result["document"])
+                    
+                    context = "\n\n".join(context_parts)
+                    context_sources = [
+                        {
+                            "content": result.get("document", ""),
+                            "metadata": result.get("metadata", {}),
+                            "score": 0.9 if result.get("distance") is None else (1.0 - result.get("distance", 0)),  # 외부 RAG는 기본 높은 점수
+                            "source": "external_rag"
+                        }
+                        for result in external_result["results"]
+                    ]
+                    
+                    # 외부 RAG 점수 계산 및 업데이트
+                    if context_sources:
+                        total_score = sum(source.get('score', 0) for source in context_sources)
+                        self.last_context_score = total_score / len(context_sources)
+                        self.last_context_length = len(context)
+                    else:
+                        self.last_context_score = 0.0
+                        self.last_context_length = 0
+                    
+                    logger.info(f"외부 RAG 사용: {len(context_sources)}개 결과, 응답시간: {external_result.get('response_time', 0):.3f}초, 평균 점수: {self.last_context_score:.3f}")
+                else:
+                    logger.info(f"외부 RAG 실패: {external_result.get('message', '알 수 없는 오류')}")
+                    
+                    # 폴백 설정이 활성화된 경우 로컬 RAG 사용
+                    if self.external_rag_service.fallback_to_local:
+                        logger.info("로컬 RAG로 폴백...")
+                        context, context_sources = self.retrieve_context(query, top_k)
+                    else:
+                        logger.warning("외부 RAG 실패 및 폴백 비활성화로 인해 컨텍스트 없음")
+            else:
+                # 외부 RAG 비활성화된 경우 로컬 RAG 사용
+                if not use_external_rag:
+                    logger.info("외부 RAG 비활성화, 로컬 RAG 사용")
+                else:
+                    logger.info("외부 RAG 서비스 비활성화, 로컬 RAG 사용")
+                
+                context, context_sources = self.retrieve_context(query, top_k)
             
             # 컨텍스트 품질 평가
             context_quality = self._evaluate_context_quality(context, context_sources)
@@ -455,6 +581,7 @@ class RAGService:
                 "context": context,
                 "context_sources": context_sources,
                 "rag_used": True,
+                "external_rag_used": external_rag_used,
                 "context_score": self.last_context_score,
                 "context_length": self.last_context_length,
                 "context_quality": context_quality
@@ -493,10 +620,10 @@ class RAGService:
             Dict: 응답 정보
         """
         try:
-            # 1. RAG 컨텍스트 검색
-            context, context_sources = self.retrieve_context(query, top_k)
+            # 1. RAG 컨텍스트 검색 (외부 RAG 우선 사용)
+            context, context_sources = await self.retrieve_context_with_external_rag(query, top_k, use_external_rag=True)
             
-            # 2. MCP 서비스 요청
+            # 2. MCP 서비스 요청 (외부 RAG 컨텍스트와 함께)
             mcp_response, mcp_success = await self.mcp_service.process_rag_with_mcp(
                 query, self, session_id=session_id, model_name=model_name
             )
@@ -520,12 +647,111 @@ class RAGService:
                     "mcp_response": mcp_response
                 }
             else:
-                # MCP 응답이 없는 경우 일반 RAG 사용
-                logger.info("MCP 응답 없음, 일반 RAG 사용")
-                return self.generate_rag_response(
-                    query, model_name, use_rag=True, top_k=top_k, 
-                    system_prompt=system_prompt, use_mcp=False
-                )
+                # MCP 응답이 없는 경우 외부 RAG 컨텍스트 사용
+                logger.info("MCP 응답 없음, 외부 RAG 컨텍스트 사용")
+                
+                # 컨텍스트 품질 평가
+                context_quality = self._evaluate_context_quality(context, context_sources)
+                
+                # RAG 사용 여부 결정
+                should_use_rag = self._should_use_rag_for_query(query, context, context_sources, context_quality)
+                
+                if should_use_rag and context:
+                    # 외부 RAG 컨텍스트로 응답 생성
+                    try:
+                        logger.info("외부 RAG 컨텍스트로 AI 응답 생성 시도...")
+                        
+                        # 시스템 프롬프트 설정
+                        if not system_prompt:
+                            system_prompt = "당신은 친근하고 도움이 되는 AI 어시스턴트입니다. 제공된 컨텍스트를 바탕으로 사용자의 질문에 대해 정확하고 유용한 답변을 제공해주세요."
+                        
+                        # RAG 프롬프트 생성
+                        rag_prompt = f"{system_prompt}\n\n컨텍스트:\n{context}\n\n질문: {query}\n\n답변:"
+                        
+                        # AI 모델을 사용하여 응답 생성
+                        from src.config.settings import get_settings
+                        settings = get_settings()
+                        
+                        try:
+                            # 방법 1: LangChain OllamaLLM 시도
+                            llm = OllamaLLM(
+                                model=model_name or settings.default_model,
+                                base_url=settings.ollama_base_url,
+                                timeout=settings.ollama_timeout
+                            )
+                            response = llm.invoke(rag_prompt)
+                            logger.info("외부 RAG 컨텍스트로 AI 응답 생성 성공")
+                            
+                        except Exception as e:
+                            logger.warning(f"LangChain OllamaLLM 실패: {e}")
+                            
+                            # 방법 2: 직접 Ollama API 호출
+                            try:
+                                import requests
+                                
+                                ollama_response = requests.post(
+                                    f"{settings.ollama_base_url}/api/generate",
+                                    json={
+                                        "model": model_name or settings.default_model,
+                                        "prompt": rag_prompt,
+                                        "stream": False,
+                                        "options": {
+                                            "temperature": settings.default_temperature,
+                                            "top_p": settings.default_top_p,
+                                            "top_k": settings.default_top_k,
+                                            "repeat_penalty": settings.default_repeat_penalty,
+                                            "seed": settings.default_seed
+                                        }
+                                    },
+                                    timeout=settings.ollama_timeout
+                                )
+                                
+                                if ollama_response.status_code == 200:
+                                    response_data = ollama_response.json()
+                                    response = response_data.get('response', '응답을 생성할 수 없습니다.')
+                                    logger.info("외부 RAG 컨텍스트로 AI 응답 생성 성공")
+                                else:
+                                    logger.error(f"Ollama API 오류: HTTP {ollama_response.status_code}")
+                                    response = "외부 RAG 컨텍스트로 응답을 생성할 수 없습니다."
+                                    
+                            except Exception as e2:
+                                logger.error(f"직접 API 호출 실패: {e2}")
+                                response = "외부 RAG 컨텍스트로 응답을 생성할 수 없습니다."
+                        
+                        return {
+                            "response": response,
+                            "context": context,
+                            "context_sources": context_sources,
+                            "rag_used": True,
+                            "mcp_used": False,
+                            "external_rag_used": True,
+                            "context_score": self.last_context_score,
+                            "context_length": self.last_context_length,
+                            "success": True
+                        }
+                        
+                    except Exception as e:
+                        logger.error(f"외부 RAG 컨텍스트로 응답 생성 실패: {e}")
+                        response = "외부 RAG 컨텍스트로 응답을 생성할 수 없습니다."
+                        
+                        return {
+                            "response": response,
+                            "context": context,
+                            "context_sources": context_sources,
+                            "rag_used": False,
+                            "mcp_used": False,
+                            "external_rag_used": True,
+                            "context_score": self.last_context_score,
+                            "context_length": self.last_context_length,
+                            "success": False
+                        }
+                else:
+                    # 외부 RAG 컨텍스트도 없는 경우 일반 RAG 사용
+                    logger.info("외부 RAG 컨텍스트도 없음, 일반 RAG 사용")
+                    return self.generate_rag_response(
+                        query, model_name, use_rag=True, top_k=top_k, 
+                        system_prompt=system_prompt, use_mcp=False
+                    )
                 
         except Exception as e:
             logger.error(f"RAG + MCP 응답 생성 실패: {e}")
@@ -572,7 +798,7 @@ class RAGService:
     def _evaluate_context_quality(self, context: str, context_sources: List[Dict]) -> str:
         """
         컨텍스트 품질을 평가합니다.
-        RAG 의존도를 낮추기 위해 매우 엄격한 기준을 적용합니다.
+        외부 RAG와 로컬 RAG에 대해 다른 기준을 적용합니다.
         
         Returns:
             str: "high", "medium", "low"
@@ -592,15 +818,27 @@ class RAGService:
         # 최저 점수
         min_score = min(r.get('score', 0) for r in context_sources)
         
-        # 품질 평가 기준 - 매우 엄격하게 수정
-        if (avg_score >= 0.98 and max_score >= 0.99 and min_score >= 0.97 
-            and context_length >= 200 and context_length <= 1000):
-            return "high"
-        elif (avg_score >= 0.95 and max_score >= 0.98 and min_score >= 0.93 
-              and context_length >= 150 and context_length <= 800):
-            return "medium"
+        # 외부 RAG 여부 확인
+        is_external_rag = any(r.get('source') == 'external_rag' for r in context_sources)
+        
+        if is_external_rag:
+            # 외부 RAG에 대한 관대한 기준
+            if (avg_score >= 0.8 and context_length >= 100):
+                return "high"
+            elif (avg_score >= 0.7 and context_length >= 50):
+                return "medium"
+            else:
+                return "low"
         else:
-            return "low"
+            # 로컬 RAG에 대한 엄격한 기준
+            if (avg_score >= 0.98 and max_score >= 0.99 and min_score >= 0.97 
+                and context_length >= 200 and context_length <= 1000):
+                return "high"
+            elif (avg_score >= 0.95 and max_score >= 0.98 and min_score >= 0.93 
+                  and context_length >= 150 and context_length <= 800):
+                return "medium"
+            else:
+                return "low"
     
     def get_rag_status(self) -> Dict[str, Any]:
         """RAG 서비스의 상태를 반환합니다."""
@@ -622,6 +860,9 @@ class RAGService:
                 rag_files = [f.name for f in self.rag_directory.glob("*") 
                            if f.is_file() and f.suffix.lower() in ['.pdf', '.txt', '.docx', '.md', '.xlsx']]
             
+            # 외부 RAG 상태 정보 추가
+            external_rag_status = self.external_rag_service.get_status()
+            
             return {
                 "status": "active",
                 "total_documents": total_documents,
@@ -639,7 +880,8 @@ class RAGService:
                 "current_rag_usage_count": self.rag_usage_count,
                 "last_context_score": self.last_context_score,
                 "last_context_length": self.last_context_length,
-                "rag_usage_remaining": max(0, self.max_rag_usage_per_session - self.rag_usage_count)
+                "rag_usage_remaining": max(0, self.max_rag_usage_per_session - self.rag_usage_count),
+                "external_rag": external_rag_status
             }
             
         except Exception as e:
@@ -825,7 +1067,7 @@ class RAGService:
     def _should_use_rag_for_query(self, query: str, context: str, context_sources: List[Dict], context_quality: str) -> bool:
         """
         주어진 쿼리에 대해 RAG를 사용해야 하는지 판단합니다.
-        RAG 의존도를 낮추기 위해 매우 보수적으로 판단합니다.
+        외부 RAG와 로컬 RAG에 대해 다른 기준을 적용합니다.
         
         Args:
             query: 사용자 질문
@@ -840,58 +1082,73 @@ class RAGService:
         if not context or not context_sources:
             return False
         
-        # 컨텍스트 품질이 낮은 경우
-        if context_quality != "high":  # high 품질만 허용
+        # 외부 RAG 여부 확인
+        is_external_rag = any(r.get('source') == 'external_rag' for r in context_sources)
+        
+        if is_external_rag:
+            # 외부 RAG에 대한 관대한 기준
+            # 컨텍스트 품질이 medium 이상이면 사용
+            if context_quality in ["high", "medium"]:
+                # 평균 유사도 점수가 적당하면 사용
+                if self.last_context_score >= 0.7:
+                    # 컨텍스트 길이가 적당하면 사용
+                    if len(context) >= 50:
+                        return True
             return False
-        
-        # 평균 유사도 점수가 너무 낮은 경우
-        if self.last_context_score < self.min_avg_score_for_rag:
-            return False
-        
-        # 컨텍스트 길이 검증
-        if len(context) < self.min_context_length or len(context) > self.max_context_length:
-            return False
-        
-        # RAG 사용 빈도 제한
-        if self.rag_usage_count >= self.max_rag_usage_per_session:
-            return False
-        
-        # RAG 사용 빈도가 높은 경우 쿨다운 적용
-        if self.rag_usage_count > 0:
-            # 마지막 RAG 사용 후 일정 쿼리 수만큼 일반 응답 사용
-            return False
-        
-        # RAG가 필요한 특정 질문 패턴만 허용
-        rag_required_patterns = [
-            "문서", "파일", "업로드", "처리", "벡터", "임베딩", "chromadb", "kure",
-            "시스템", "기능", "설정", "구성", "아키텍처", "모델", "전처리"
-        ]
-        
-        query_lower = query.lower()
-        has_rag_required_pattern = any(pattern in query_lower for pattern in rag_required_patterns)
-        
-        # RAG가 필요한 패턴이 없으면 사용하지 않음
-        if not has_rag_required_pattern:
-            return False
-        
-        # 일반적인 질문 패턴 확인 (RAG가 불필요한 경우들)
-        general_question_patterns = [
-            "안녕", "반갑", "고마워", "감사", "좋아", "괜찮", "네", "예",
-            "뭐해", "뭐하고", "어떻게", "무엇", "누구", "언제", "어디",
-            "날씨", "기온", "습도", "비", "눈", "맑음", "흐림",
-            "주가", "주식", "종목", "증시", "코스피", "코스닥",
-            "검색", "찾기", "최신", "뉴스", "정보"
-        ]
-        
-        is_general_question = any(pattern in query_lower for pattern in general_question_patterns)
-        
-        # 일반적인 질문은 RAG 사용하지 않음
-        if is_general_question:
-            return False
-        
-        # 컨텍스트 소스가 너무 적거나 많은 경우
-        if len(context_sources) < 1 or len(context_sources) > 2:
-            return False
+        else:
+            # 로컬 RAG에 대한 엄격한 기준
+            # 컨텍스트 품질이 high여야 함
+            if context_quality != "high":
+                return False
+            
+            # 평균 유사도 점수가 너무 낮은 경우
+            if self.last_context_score < self.min_avg_score_for_rag:
+                return False
+            
+            # 컨텍스트 길이 검증
+            if len(context) < self.min_context_length or len(context) > self.max_context_length:
+                return False
+            
+            # RAG 사용 빈도 제한
+            if self.rag_usage_count >= self.max_rag_usage_per_session:
+                return False
+            
+            # RAG 사용 빈도가 높은 경우 쿨다운 적용
+            if self.rag_usage_count > 0:
+                # 마지막 RAG 사용 후 일정 쿼리 수만큼 일반 응답 사용
+                return False
+            
+            # RAG가 필요한 특정 질문 패턴만 허용
+            rag_required_patterns = [
+                "문서", "파일", "업로드", "처리", "벡터", "임베딩", "chromadb", "kure",
+                "시스템", "기능", "설정", "구성", "아키텍처", "모델", "전처리"
+            ]
+            
+            query_lower = query.lower()
+            has_rag_required_pattern = any(pattern in query_lower for pattern in rag_required_patterns)
+            
+            # RAG가 필요한 패턴이 없으면 사용하지 않음
+            if not has_rag_required_pattern:
+                return False
+            
+            # 일반적인 질문 패턴 확인 (RAG가 불필요한 경우들)
+            general_question_patterns = [
+                "안녕", "반갑", "고마워", "감사", "좋아", "괜찮", "네", "예",
+                "뭐해", "뭐하고", "어떻게", "무엇", "누구", "언제", "어디",
+                "날씨", "기온", "습도", "비", "눈", "맑음", "흐림",
+                "주가", "주식", "종목", "증시", "코스피", "코스닥",
+                "검색", "찾기", "최신", "뉴스", "정보"
+            ]
+            
+            is_general_question = any(pattern in query_lower for pattern in general_question_patterns)
+            
+            # 일반적인 질문은 RAG 사용하지 않음
+            if is_general_question:
+                return False
+            
+            # 컨텍스트 소스가 너무 적거나 많은 경우
+            if len(context_sources) < 1 or len(context_sources) > 2:
+                return False
         
         # 모든 조건을 만족하는 경우에만 RAG 사용
         return True
