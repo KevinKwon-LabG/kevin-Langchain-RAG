@@ -7,14 +7,10 @@ python-multipart==0.0.20
 langchain==0.3.27
 langchain-community==0.3.27
 langchain-core==0.3.72
-langchain-openai==0.2.8
 langchain-huggingface==0.3.1
 langchain-chroma==0.2.5
-langchain-ollama==0.3.6
 
-# MCP (Model Context Protocol) Support
-mcp==1.0.0
-mcp-client==1.0.0
+# MCP (Model Context Protocol) Support (미사용이라면 제거)
 
 # Vector Database
 chromadb==1.0.15
@@ -25,13 +21,9 @@ sentence-transformers==5.0.0
 # Document Processing
 pypdf==5.8.0
 python-docx==1.2.0
-docx2txt==0.9
 tiktoken==0.9.0
 
-# Korean NLP Processing
-konlpy==0.6.0
-soynlp==0.0.493
-kiwipiepy==0.18.0
+# Korean NLP Processing (미사용 모듈 제거)
 
 # Excel Processing
 pandas==2.1.4
@@ -46,8 +38,7 @@ jinja2==3.1.2
 pydantic==2.11.7
 pydantic-settings==2.10.1
 
-# Web Scraping
-beautifulsoup4==4.12.2
+# Web Scraping (미사용 모듈 제거)
 
 # Development and Testing (선택적)
 pytest>=8.2.0

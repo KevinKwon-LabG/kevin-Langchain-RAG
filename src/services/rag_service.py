@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from typing import Dict, Any, Optional, List, Tuple
+import asyncio
 from pathlib import Path
 
 from langchain.prompts import PromptTemplate
@@ -84,9 +85,17 @@ class RAGService:
         self.last_context_score = 0.0  # 마지막 검색된 컨텍스트의 평균 유사도 점수
         self.last_context_length = 0   # 마지막 검색된 컨텍스트의 길이
         
-        # RAG 사용 여부 판단을 위한 변수들 - 더 엄격하게 설정
-        self.min_avg_score_for_rag = 0.96  # RAG 사용을 위한 최소 평균 유사도 점수 증가
-        self.max_context_chunks = 4  # 최대 컨텍스트 청크 수 증가
+        # 로컬/외부 RAG 임계값 및 컨텍스트 구성 규칙 (설정에서 로드)
+        self.min_avg_score_for_rag_local = settings.min_avg_score_for_rag_local
+        self.min_avg_score_for_rag_external = settings.min_avg_score_for_rag_external
+
+        self.local_max_context_chunks = settings.local_max_context_chunks
+        self.local_max_context_length = settings.local_max_context_length
+        self.local_chunk_truncate_length = settings.local_chunk_truncate_length
+
+        self.external_max_context_chunks = settings.external_max_context_chunks
+        self.external_max_context_length = settings.external_max_context_length
+        self.external_chunk_truncate_length = settings.external_chunk_truncate_length
         
         # RAG 사용 빈도 제한을 위한 변수들
         self.rag_usage_count = 0  # RAG 사용 횟수
@@ -178,9 +187,9 @@ class RAGService:
             logger.error(f"문서 처리 상태 확인 중 오류: {e}")
             return False
     
-    def retrieve_context(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+    def retrieve_local_context(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
         """
-        쿼리에 대한 컨텍스트를 검색합니다.
+        로컬 RAG로 컨텍스트를 검색합니다.
         
         Args:
             query: 검색 쿼리
@@ -196,14 +205,17 @@ class RAGService:
                 top_k=top_k
             )
             
-            # 더 엄격한 유사도 임계값 필터링
+            # 유사도 임계값 필터링 (로컬)
             filtered_results = []
             total_score = 0.0
             
             for result in search_results:
                 score = result.get('score', 0)
                 if score >= self.similarity_threshold:
-                    filtered_results.append(result)
+                    # 소스 라벨 부여
+                    enriched = dict(result)
+                    enriched["source"] = "local_rag"
+                    filtered_results.append(enriched)
                     total_score += score
             
             # 컨텍스트 품질 평가
@@ -214,105 +226,142 @@ class RAGService:
                 self.last_context_score = 0.0
                 self.last_context_length = 0
             
-            # 컨텍스트 품질이 낮은 경우 빈 결과 반환
-            if filtered_results and self.last_context_score < self.min_avg_score_for_rag:
-                logger.info(f"컨텍스트 품질이 낮음 (평균 점수: {self.last_context_score:.3f}), RAG 사용하지 않음")
+            # 평균 점수 임계값(로컬) 미달 시 빈 결과 반환
+            if filtered_results and self.last_context_score < self.min_avg_score_for_rag_local:
+                logger.info(f"로컬 컨텍스트 품질이 낮음 (평균 점수: {self.last_context_score:.3f}), 로컬 RAG 결과 무시")
                 return "", []
             
-            # 컨텍스트 길이 제한 적용
+            # 컨텍스트 길이 제한 적용 (로컬)
             context_parts = []
             total_length = 0
             
-            for i, result in enumerate(filtered_results[:self.max_context_chunks]):
+            for i, result in enumerate(filtered_results[: self.local_max_context_chunks]):
                 content = result['content'].strip()
                 if content:
                     # 각 청크의 길이 제한
-                    if len(content) > 500:
-                        content = content[:500] + "..."
+                    if len(content) > self.local_chunk_truncate_length:
+                        content = content[: self.local_chunk_truncate_length] + "..."
                     
                     # 전체 길이 제한 확인
-                    if total_length + len(content) > self.max_context_length:
+                    if total_length + len(content) > self.local_max_context_length:
                         break
                     
-                    context_parts.append(f"[문서 {i+1}] {content}")
+                    context_parts.append(f"[로컬 {i+1}] {content}")
                     total_length += len(content)
             
             context = "\n\n".join(context_parts)
             
-            logger.info(f"RAG 컨텍스트 검색 완료: {len(context_parts)}개 청크, 길이: {len(context)} 문자, 평균 점수: {self.last_context_score:.3f}")
+            logger.info(f"로컬 RAG 컨텍스트 검색 완료: {len(context_parts)}개 청크, 길이: {len(context)} 문자, 평균 점수: {self.last_context_score:.3f}")
             
-            return context, filtered_results[:len(context_parts)]
+            return context, filtered_results[: len(context_parts)]
             
         except Exception as e:
-            logger.error(f"RAG 컨텍스트 검색 실패: {e}")
+            logger.error(f"로컬 RAG 컨텍스트 검색 실패: {e}")
             return "", []
+
+    # 하위 호환: 기존 메서드명 유지 (내부적으로 로컬 검색 호출)
+    def retrieve_context(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+        return self.retrieve_local_context(query, top_k)
     
-    async def retrieve_context_with_external_rag(self, query: str, top_k: int = 5, 
-                                                use_external_rag: bool = True) -> Tuple[str, List[Dict[str, Any]]]:
-        """
-        외부 RAG를 우선 사용하여 컨텍스트를 검색합니다.
-        
-        Args:
-            query: 검색 쿼리
-            top_k: 검색할 문서 수
-            use_external_rag: 외부 RAG 사용 여부
-            
-        Returns:
-            Tuple[str, List[Dict]]: (컨텍스트 문자열, 검색 결과 리스트)
-        """
+    async def retrieve_external_context(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+        """외부 RAG로 컨텍스트를 검색합니다. (폴백 없음)"""
         try:
-            # 외부 RAG 우선 시도 (활성화된 경우)
-            context = ""
-            context_sources = []
-            
-            if use_external_rag and self.external_rag_service.enabled:
-                logger.info("외부 RAG 서비스 시도 중...")
-                external_result = await self.external_rag_service.query(query, top_k)
-                
-                if external_result["success"] and external_result["total_results"] > 0:
-                    # 외부 RAG 성공 시 결과 사용
-                    context_parts = []
-                    
-                    for result in external_result["results"]:
-                        if result.get("document"):
-                            context_parts.append(result["document"])
-                    
-                    context = "\n\n".join(context_parts)
-                    context_sources = [
-                        {
-                            "content": result.get("document", ""),
-                            "metadata": result.get("metadata", {}),
-                            "score": 0.9 if result.get("distance") is None else (1.0 - result.get("distance", 0)),  # 외부 RAG는 기본 높은 점수
-                            "source": "external_rag"
-                        }
-                        for result in external_result["results"]
-                    ]
-                    
-                    logger.info(f"외부 RAG 사용: {len(context_sources)}개 결과, 응답시간: {external_result.get('response_time', 0):.3f}초")
-                else:
-                    logger.info(f"외부 RAG 실패: {external_result.get('message', '알 수 없는 오류')}")
-                    
-                    # 폴백 설정이 활성화된 경우 로컬 RAG 사용
-                    if self.external_rag_service.fallback_to_local:
-                        logger.info("로컬 RAG로 폴백...")
-                        context, context_sources = self.retrieve_context(query, top_k)
-                    else:
-                        logger.warning("외부 RAG 실패 및 폴백 비활성화로 인해 컨텍스트 없음")
-            else:
-                # 외부 RAG 비활성화된 경우 로컬 RAG 사용
-                if not use_external_rag:
-                    logger.info("외부 RAG 비활성화, 로컬 RAG 사용")
-                else:
-                    logger.info("외부 RAG 서비스 비활성화, 로컬 RAG 사용")
-                
-                context, context_sources = self.retrieve_context(query, top_k)
-            
-            return context, context_sources
-            
+            if not self.external_rag_service.enabled:
+                logger.info("외부 RAG 비활성화")
+                return "", []
+
+            external_result = await self.external_rag_service.query(query, top_k)
+
+            if not (external_result.get("success") and external_result.get("total_results", 0) > 0):
+                logger.info(f"외부 RAG 결과 없음 또는 실패: {external_result.get('message', '알 수 없는 오류')}")
+                return "", []
+
+            # 외부 결과를 로컬과 동일한 스코어 정책으로 정규화 (score: 유사도)
+            normalized_results: List[Dict[str, Any]] = []
+            for r in external_result["results"]:
+                document_text = r.get("document") or r.get("content") or ""
+                metadata = r.get("metadata", {})
+                distance = r.get("distance", None)
+                similarity = (1.0 - float(distance)) if distance is not None else float(r.get("similarity", 0.9))
+                if similarity >= self.similarity_threshold and document_text:
+                    normalized_results.append({
+                        "id": r.get("id", "unknown"),
+                        "content": document_text,
+                        "metadata": metadata,
+                        "score": similarity,
+                        "source": "external_rag"
+                    })
+
+            if not normalized_results:
+                return "", []
+
+            # 평균 점수 평가 (외부)
+            avg_score = sum(item["score"] for item in normalized_results) / len(normalized_results)
+            self.last_context_score = avg_score
+            self.last_context_length = sum(len(item["content"]) for item in normalized_results)
+
+            if avg_score < self.min_avg_score_for_rag_external:
+                logger.info(f"외부 컨텍스트 품질이 낮음 (평균 점수: {avg_score:.3f}), 외부 RAG 결과 무시")
+                return "", []
+
+            # 컨텍스트 길이 제한 적용 (외부)
+            context_parts: List[str] = []
+            total_length = 0
+            for i, result in enumerate(normalized_results[: self.external_max_context_chunks]):
+                content = result["content"].strip()
+                if not content:
+                    continue
+                if len(content) > self.external_chunk_truncate_length:
+                    content = content[: self.external_chunk_truncate_length] + "..."
+                if total_length + len(content) > self.external_max_context_length:
+                    break
+                context_parts.append(f"[외부 {i+1}] {content}")
+                total_length += len(content)
+
+            context = "\n\n".join(context_parts)
+            logger.info(
+                f"외부 RAG 컨텍스트 검색 완료: {len(context_parts)}개 청크, 길이: {len(context)} 문자, 평균 점수: {self.last_context_score:.3f}"
+            )
+            return context, normalized_results[: len(context_parts)]
+
         except Exception as e:
             logger.error(f"외부 RAG 컨텍스트 검색 실패: {e}")
-            # 오류 발생 시 로컬 RAG로 폴백
-            return self.retrieve_context(query, top_k)
+            return "", []
+
+    async def retrieve_combined_context(self, query: str, top_k: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+        """로컬과 외부 RAG를 동시에 수행하고 결과를 결합합니다."""
+        try:
+            loop = asyncio.get_event_loop()
+            local_future = loop.run_in_executor(None, self.retrieve_local_context, query, top_k)
+            external_future = self.retrieve_external_context(query, top_k)
+
+            (local_context, local_sources), (external_context, external_sources) = await asyncio.gather(
+                local_future, external_future
+            )
+
+            combined_parts = []
+            combined_sources: List[Dict[str, Any]] = []
+            if local_context:
+                combined_parts.append(local_context)
+                combined_sources.extend(local_sources)
+            if external_context:
+                combined_parts.append(external_context)
+                combined_sources.extend(external_sources)
+
+            combined_context = "\n\n".join(combined_parts)
+
+            # 마지막 컨텍스트 품질 갱신 (결합 기준)
+            if combined_sources:
+                self.last_context_score = sum(s.get("score", 0) for s in combined_sources) / len(combined_sources)
+                self.last_context_length = len(combined_context)
+            else:
+                self.last_context_score = 0.0
+                self.last_context_length = 0
+
+            return combined_context, combined_sources
+        except Exception as e:
+            logger.error(f"결합 컨텍스트 검색 실패: {e}")
+            return "", []
     
     async def generate_rag_response(self, query: str, model_name: str = None, 
                             use_rag: bool = True, top_k: int = 5,
@@ -354,62 +403,9 @@ class RAGService:
                     "context_length": 0
                 }
             
-            # 외부 RAG 우선 시도 (활성화된 경우)
-            context = ""
-            context_sources = []
-            external_rag_used = False
-            
-            if use_external_rag and self.external_rag_service.enabled:
-                logger.info("외부 RAG 서비스 시도 중...")
-                external_result = await self.external_rag_service.query(query, top_k)
-                
-                if external_result["success"] and external_result["total_results"] > 0:
-                    # 외부 RAG 성공 시 결과 사용
-                    external_rag_used = True
-                    context_parts = []
-                    
-                    for result in external_result["results"]:
-                        if result.get("document"):
-                            context_parts.append(result["document"])
-                    
-                    context = "\n\n".join(context_parts)
-                    context_sources = [
-                        {
-                            "content": result.get("document", ""),
-                            "metadata": result.get("metadata", {}),
-                            "score": 0.9 if result.get("distance") is None else (1.0 - result.get("distance", 0)),  # 외부 RAG는 기본 높은 점수
-                            "source": "external_rag"
-                        }
-                        for result in external_result["results"]
-                    ]
-                    
-                    # 외부 RAG 점수 계산 및 업데이트
-                    if context_sources:
-                        total_score = sum(source.get('score', 0) for source in context_sources)
-                        self.last_context_score = total_score / len(context_sources)
-                        self.last_context_length = len(context)
-                    else:
-                        self.last_context_score = 0.0
-                        self.last_context_length = 0
-                    
-                    logger.info(f"외부 RAG 사용: {len(context_sources)}개 결과, 응답시간: {external_result.get('response_time', 0):.3f}초, 평균 점수: {self.last_context_score:.3f}")
-                else:
-                    logger.info(f"외부 RAG 실패: {external_result.get('message', '알 수 없는 오류')}")
-                    
-                    # 폴백 설정이 활성화된 경우 로컬 RAG 사용
-                    if self.external_rag_service.fallback_to_local:
-                        logger.info("로컬 RAG로 폴백...")
-                        context, context_sources = self.retrieve_context(query, top_k)
-                    else:
-                        logger.warning("외부 RAG 실패 및 폴백 비활성화로 인해 컨텍스트 없음")
-            else:
-                # 외부 RAG 비활성화된 경우 로컬 RAG 사용
-                if not use_external_rag:
-                    logger.info("외부 RAG 비활성화, 로컬 RAG 사용")
-                else:
-                    logger.info("외부 RAG 서비스 비활성화, 로컬 RAG 사용")
-                
-                context, context_sources = self.retrieve_context(query, top_k)
+            # 항상 로컬과 외부 RAG를 모두 시도하여 결합
+            context, context_sources = await self.retrieve_combined_context(query, top_k)
+            external_rag_used = any(s.get("source") == "external_rag" for s in context_sources)
             
             # 컨텍스트 품질 평가
             context_quality = self._evaluate_context_quality(context, context_sources)
@@ -620,8 +616,8 @@ class RAGService:
             Dict: 응답 정보
         """
         try:
-            # 1. RAG 컨텍스트 검색 (외부 RAG 우선 사용)
-            context, context_sources = await self.retrieve_context_with_external_rag(query, top_k, use_external_rag=True)
+            # 1. RAG 컨텍스트 검색 (로컬+외부 동시 수행)
+            context, context_sources = await self.retrieve_combined_context(query, top_k)
             
             # 2. MCP 서비스 요청 (외부 RAG 컨텍스트와 함께)
             mcp_response, mcp_success = await self.mcp_service.process_rag_with_mcp(
@@ -873,8 +869,12 @@ class RAGService:
                 "context_weight": self.context_weight,
                 "min_context_length": self.min_context_length,
                 "max_context_length": self.max_context_length,
-                "min_avg_score_for_rag": self.min_avg_score_for_rag,
-                "max_context_chunks": self.max_context_chunks,
+                "min_avg_score_for_rag_local": self.min_avg_score_for_rag_local,
+                "min_avg_score_for_rag_external": self.min_avg_score_for_rag_external,
+                "local_max_context_chunks": self.local_max_context_chunks,
+                "local_max_context_length": self.local_max_context_length,
+                "external_max_context_chunks": self.external_max_context_chunks,
+                "external_max_context_length": self.external_max_context_length,
                 "max_rag_usage_per_session": self.max_rag_usage_per_session,
                 "rag_cooldown_queries": self.rag_cooldown_queries,
                 "current_rag_usage_count": self.rag_usage_count,
@@ -943,8 +943,14 @@ class RAGService:
                        context_weight: Optional[float] = None,
                        min_context_length: Optional[int] = None,
                        max_context_length: Optional[int] = None,
-                       min_avg_score_for_rag: Optional[float] = None,
-                       max_context_chunks: Optional[int] = None,
+                       min_avg_score_for_rag_local: Optional[float] = None,
+                       min_avg_score_for_rag_external: Optional[float] = None,
+                       local_max_context_chunks: Optional[int] = None,
+                       local_max_context_length: Optional[int] = None,
+                       external_max_context_chunks: Optional[int] = None,
+                       external_max_context_length: Optional[int] = None,
+                       local_chunk_truncate_length: Optional[int] = None,
+                       external_chunk_truncate_length: Optional[int] = None,
                        max_rag_usage_per_session: Optional[int] = None,
                        rag_cooldown_queries: Optional[int] = None) -> Dict[str, Any]:
         """RAG 설정을 업데이트합니다."""
@@ -967,13 +973,37 @@ class RAGService:
                 self.max_context_length = max_context_length
                 logger.info(f"최대 컨텍스트 길이 업데이트: {max_context_length}")
             
-            if min_avg_score_for_rag is not None:
-                self.min_avg_score_for_rag = min_avg_score_for_rag
-                logger.info(f"RAG 사용 최소 평균 점수 업데이트: {min_avg_score_for_rag}")
+            if min_avg_score_for_rag_local is not None:
+                self.min_avg_score_for_rag_local = min_avg_score_for_rag_local
+                logger.info(f"로컬 RAG 최소 평균 점수 업데이트: {min_avg_score_for_rag_local}")
+
+            if min_avg_score_for_rag_external is not None:
+                self.min_avg_score_for_rag_external = min_avg_score_for_rag_external
+                logger.info(f"외부 RAG 최소 평균 점수 업데이트: {min_avg_score_for_rag_external}")
             
-            if max_context_chunks is not None:
-                self.max_context_chunks = max_context_chunks
-                logger.info(f"최대 컨텍스트 청크 수 업데이트: {max_context_chunks}")
+            if local_max_context_chunks is not None:
+                self.local_max_context_chunks = local_max_context_chunks
+                logger.info(f"로컬 최대 컨텍스트 청크 수 업데이트: {local_max_context_chunks}")
+
+            if local_max_context_length is not None:
+                self.local_max_context_length = local_max_context_length
+                logger.info(f"로컬 최대 컨텍스트 길이 업데이트: {local_max_context_length}")
+
+            if external_max_context_chunks is not None:
+                self.external_max_context_chunks = external_max_context_chunks
+                logger.info(f"외부 최대 컨텍스트 청크 수 업데이트: {external_max_context_chunks}")
+
+            if external_max_context_length is not None:
+                self.external_max_context_length = external_max_context_length
+                logger.info(f"외부 최대 컨텍스트 길이 업데이트: {external_max_context_length}")
+
+            if local_chunk_truncate_length is not None:
+                self.local_chunk_truncate_length = local_chunk_truncate_length
+                logger.info(f"로컬 청크 절단 길이 업데이트: {local_chunk_truncate_length}")
+
+            if external_chunk_truncate_length is not None:
+                self.external_chunk_truncate_length = external_chunk_truncate_length
+                logger.info(f"외부 청크 절단 길이 업데이트: {external_chunk_truncate_length}")
             
             if max_rag_usage_per_session is not None:
                 self.max_rag_usage_per_session = max_rag_usage_per_session
@@ -991,8 +1021,14 @@ class RAGService:
                     "context_weight": self.context_weight,
                     "min_context_length": self.min_context_length,
                     "max_context_length": self.max_context_length,
-                    "min_avg_score_for_rag": self.min_avg_score_for_rag,
-                    "max_context_chunks": self.max_context_chunks,
+                    "min_avg_score_for_rag_local": self.min_avg_score_for_rag_local,
+                    "min_avg_score_for_rag_external": self.min_avg_score_for_rag_external,
+                    "local_max_context_chunks": self.local_max_context_chunks,
+                    "local_max_context_length": self.local_max_context_length,
+                    "local_chunk_truncate_length": self.local_chunk_truncate_length,
+                    "external_max_context_chunks": self.external_max_context_chunks,
+                    "external_max_context_length": self.external_max_context_length,
+                    "external_chunk_truncate_length": self.external_chunk_truncate_length,
                     "max_rag_usage_per_session": self.max_rag_usage_per_session,
                     "rag_cooldown_queries": self.rag_cooldown_queries,
                     "current_rag_usage_count": self.rag_usage_count
@@ -1101,8 +1137,8 @@ class RAGService:
             if context_quality != "high":
                 return False
             
-            # 평균 유사도 점수가 너무 낮은 경우
-            if self.last_context_score < self.min_avg_score_for_rag:
+            # 평균 유사도 점수가 너무 낮은 경우 (로컬 기준 사용)
+            if self.last_context_score < self.min_avg_score_for_rag_local:
                 return False
             
             # 컨텍스트 길이 검증

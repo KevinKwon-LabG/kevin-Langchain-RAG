@@ -1,12 +1,12 @@
 {
-  "total_queries": 9,
-  "successful_queries": 9,
+  "total_queries": 2,
+  "successful_queries": 2,
   "failed_queries": 0,
-  "average_response_time": 0.028200149536132812,
-  "last_health_check": "2025-08-08T13:23:35.283304",
+  "average_response_time": 0.1468178629875183,
+  "last_health_check": "2025-08-10T01:17:48.351647",
   "health_status": "healthy",
   "created_at": "2025-08-07T22:55:32.140493",
-  "updated_at": "2025-08-08T13:24:04.431808",
+  "updated_at": "2025-08-10T01:18:35.951657",
   "recent_queries": [
     {
       "query": "등록번호가 20501인 사람은 누구야?",
@@ -196,6 +196,90 @@
       "response_time": 0.03414154052734375,
       "timestamp": "2025-08-08T13:24:04.431814",
       "results_count": 5
+    },
+    {
+      "query": "2024년 윤석열 탄핵 사유를 찾아줘",
+      "success": true,
+      "response_time": 0.031494855880737305,
+      "timestamp": "2025-08-08T14:44:07.728913",
+      "results_count": 5
+    },
+    {
+      "query": "좀비 퇴치법을 알려줘",
+      "success": true,
+      "response_time": 0.03362894058227539,
+      "timestamp": "2025-08-08T14:44:51.985564",
+      "results_count": 5
+    },
+    {
+      "query": "SFA 프로젝트 회의록을 요약해줘",
+      "success": true,
+      "response_time": 0.25601840019226074,
+      "timestamp": "2025-08-09T22:39:20.809441",
+      "results_count": 5
+    },
+    {
+      "query": "SFA 프로젝트 회의록을 요약해줘",
+      "success": true,
+      "response_time": 0.17190003395080566,
+      "timestamp": "2025-08-09T22:44:07.988402",
+      "results_count": 5
+    },
+    {
+      "query": "등록번호가 20501인 사람은 누구야?",
+      "success": true,
+      "response_time": 0.272672176361084,
+      "timestamp": "2025-08-09T22:57:02.255127",
+      "results_count": 5
+    },
+    {
+      "query": "등록번호가 20501인 사람은 누구야?",
+      "success": true,
+      "response_time": 0.025912046432495117,
+      "timestamp": "2025-08-09T22:57:21.530040",
+      "results_count": 5
+    },
+    {
+      "query": "2025-07-15 에 검사한 환자명",
+      "success": true,
+      "response_time": 0.1995840072631836,
+      "timestamp": "2025-08-09T22:58:00.886025",
+      "results_count": 5
+    },
+    {
+      "query": "2025-07-15 에 검사한 환자명",
+      "success": true,
+      "response_time": 0.5356154441833496,
+      "timestamp": "2025-08-10T00:00:07.808276",
+      "results_count": 3
+    },
+    {
+      "query": "2025-07-15 에 검사한 환자명",
+      "success": true,
+      "response_time": 0.024797916412353516,
+      "timestamp": "2025-08-10T00:08:31.523105",
+      "results_count": 3
+    },
+    {
+      "query": "2025-07-15 에 검사한 환자명",
+      "success": true,
+      "response_time": 0.26779913902282715,
+      "timestamp": "2025-08-10T01:11:29.664075",
+      "results_count": 3
+    },
+    {
+      "query": "2025-07-15 에 검사한 환자명",
+      "success": true,
+      "response_time": 0.4815638065338135,
+      "timestamp": "2025-08-10T01:18:15.573685",
+      "results_count": 3
+    },
+    {
+      "query": "2025-07-15 에 검사한 환자명",
+      "success": true,
+      "response_time": 0.04145359992980957,
+      "timestamp": "2025-08-10T01:18:35.951663",
+      "results_count": 3
     }
   ]
 }

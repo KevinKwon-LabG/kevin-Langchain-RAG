@@ -1518,8 +1518,8 @@ class MCPClientService:
                 except Exception as e:
                     logger.warning(f"대기 상태에서 날씨 데이터 가져오기 실패: {e}")
                 
-                # RAG 컨텍스트 검색
-                context, context_sources = rag_service.retrieve_context(user_prompt, top_k=3)
+                # RAG 컨텍스트 검색 (로컬+외부 동시)
+                context, context_sources = await rag_service.retrieve_combined_context(user_prompt, top_k=3)
                 
                 # 통합 응답 생성
                 logger.info(f"[MCP RAG 통합] 통합 응답 생성 시작 - mcp_data: {list(mcp_data.keys())}")
@@ -1582,8 +1582,8 @@ class MCPClientService:
                 except Exception as e:
                     logger.warning(f"대기 상태에서 주식 데이터 가져오기 실패: {e}")
                 
-                # RAG 컨텍스트 검색
-                context, context_sources = rag_service.retrieve_context(user_prompt, top_k=3)
+                # RAG 컨텍스트 검색 (로컬+외부 동시)
+                context, context_sources = await rag_service.retrieve_combined_context(user_prompt, top_k=3)
                 
                 # 통합 응답 생성
                 logger.info(f"[MCP RAG 통합] 통합 응답 생성 시작 - mcp_data: {list(mcp_data.keys())}")
@@ -1614,8 +1614,8 @@ class MCPClientService:
         # MCP 서비스 요청 데이터 초기화
         mcp_data = {}
         
-        # RAG 컨텍스트 검색
-        context, context_sources = rag_service.retrieve_context(user_prompt, top_k=3)
+        # RAG 컨텍스트 검색 (로컬+외부 동시)
+        context, context_sources = await rag_service.retrieve_combined_context(user_prompt, top_k=3)
         
         try:
             # 2. MCP 서비스 요청 (필요한 경우) - 일반적인 요청 처리

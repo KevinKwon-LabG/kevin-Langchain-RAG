@@ -14,13 +14,10 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import (
-    PyPDFLoader, 
-    TextLoader, 
-    Docx2txtLoader,
+    PyPDFLoader,
+    TextLoader,
     UnstructuredMarkdownLoader,
-    UnstructuredExcelLoader
 )
-import docx2txt
 import chromadb
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -76,8 +73,7 @@ class DocumentService:
         extension_mapping = {
             '.pdf': 'pdf',
             '.txt': 'text',
-            '.docx': 'word',
-            '.doc': 'word',
+            '.docx': 'word',  # .doc은 지원하지 않음
             '.md': 'markdown',
             '.xlsx': 'excel',
             '.xls': 'excel',
@@ -224,6 +220,9 @@ class DocumentService:
                 processed_content = word_processor.extract_text_from_word(file_path)
                 logger.info(f"워드 파일 텍스트 추출 완료: {file_path} (길이: {len(processed_content)} 문자)")
                 return processed_content
+            elif file_extension == '.doc':
+                # 명시적으로 차단
+                raise ValueError(".doc 형식은 지원하지 않습니다. .docx로 변환 후 업로드해주세요.")
 
             elif file_extension == '.md':
                 loader = UnstructuredMarkdownLoader(file_path)
@@ -291,65 +290,90 @@ class DocumentService:
                 return 0
     
     def get_all_documents(self) -> List[Dict[str, Any]]:
-        """모든 문서 정보 반환 (스레드 안전)"""
+        """모든 문서 정보 반환 (스레드 안전)
+        - 벡터스토어의 실제 문서 ID(ids)를 포함해 반환
+        - 메타데이터에 filename이 없고 file_name만 있는 경우도 보완
+        """
         with self._read_lock:  # 읽기 작업 시 락 획득
             try:
-                # 모든 문서 조회
                 results = self.vectorstore._collection.get()
-                
-                documents = []
+
+                documents: List[Dict[str, Any]] = []
                 if results and 'metadatas' in results:
-                    for i, metadata in enumerate(results['metadatas']):
-                        if metadata:  # None이 아닌 경우만
-                            documents.append({
-                                "id": metadata.get("doc_id", f"doc_{i}"),
-                                "filename": metadata.get("filename", "unknown"),
-                                "source": metadata.get("source", "unknown"),
-                                "file_type": metadata.get("file_type", "unknown"),
-                                "file_size": metadata.get("file_size", 0),
-                                "metadata": metadata
-                            })
-                
+                    ids = results.get('ids', [])
+                    metadatas = results['metadatas']
+                    for i, metadata in enumerate(metadatas):
+                        if metadata is None:
+                            continue
+                        chroma_id = ids[i] if i < len(ids) else f"doc_{i}"
+                        filename = metadata.get("filename") or metadata.get("file_name") or "unknown"
+                        documents.append({
+                            "id": chroma_id,  # 벡터스토어 실제 ID
+                            "metadata_doc_id": metadata.get("doc_id"),  # 앱 내부에서 부여한 문서 ID(있을 수도, 없을 수도)
+                            "filename": filename,
+                            "source": metadata.get("source", "unknown"),
+                            "file_type": metadata.get("file_type", "unknown"),
+                            "file_size": metadata.get("file_size", 0),
+                            "metadata": metadata
+                        })
+
                 return documents
-                
+
             except Exception as e:
                 logger.error(f"모든 문서 조회 실패: {e}")
                 return []
     
     def delete_document(self, doc_id: str) -> bool:
-        """문서 삭제 (스레드 안전)"""
+        """문서 삭제 (스레드 안전)
+        - 우선 벡터스토어의 실제 ID(ids) 기준으로 삭제 시도
+        - 실패 시 메타데이터의 doc_id(where) 기준으로 폴백 삭제
+        """
         with self._write_lock:  # 쓰기 작업 시 락 획득
+            # 1) 실제 ID로 삭제
             try:
-                # 해당 문서의 모든 청크 삭제
-                self.vectorstore._collection.delete(
-                    where={"doc_id": doc_id}
-                )
-                logger.info(f"문서 '{doc_id}'가 삭제되었습니다.")
+                self.vectorstore._collection.delete(ids=[doc_id])
+                logger.info(f"벡터스토어 ID 기준 문서 삭제 완료: {doc_id}")
                 return True
             except Exception as e:
-                logger.error(f"문서 삭제 실패: {e}")
+                logger.warning(f"ID 기준 삭제 실패, 메타데이터 기준으로 재시도: {e}")
+            # 2) 메타데이터의 doc_id로 삭제
+            try:
+                self.vectorstore._collection.delete(where={"doc_id": doc_id})
+                logger.info(f"메타데이터 doc_id 기준 문서 삭제 완료: {doc_id}")
+                return True
+            except Exception as e:
+                logger.error(f"문서 삭제 실패 (id/where 모두 실패): {e}")
                 return False
     
     def delete_documents_by_filename(self, filename: str) -> int:
-        """파일명으로 모든 관련 문서 삭제 (스레드 안전)"""
+        """파일명으로 모든 관련 문서 삭제 (스레드 안전)
+        - 메타데이터 키가 'filename' 또는 'file_name'일 수 있어 각각 삭제 시도 후 합산
+        - 결과 반환값은 드라이버에 따라 None일 수 있으므로 보수적으로 처리
+        """
         with self._write_lock:  # 쓰기 작업 시 락 획득
+            total_deleted = 0
             try:
-                # 파일명으로 모든 관련 문서 삭제
-                result = self.vectorstore._collection.delete(
-                    where={"filename": filename}
-                )
-                
-                # Chroma의 delete 메서드는 삭제된 문서 수를 반환하거나 None을 반환할 수 있음
-                if result is None:
-                    deleted_count = 0
-                else:
-                    deleted_count = result
-                
-                logger.info(f"파일명 '{filename}'에 해당하는 {deleted_count}개 문서 청크가 삭제되었습니다.")
-                return deleted_count
+                # 1) filename 키 기준 삭제
+                try:
+                    res1 = self.vectorstore._collection.delete(where={"filename": filename})
+                    if isinstance(res1, int):
+                        total_deleted += res1
+                except Exception as e:
+                    logger.debug(f"filename 키 기준 삭제 시도 중 경고: {e}")
+
+                # 2) file_name 키 기준 삭제
+                try:
+                    res2 = self.vectorstore._collection.delete(where={"file_name": filename})
+                    if isinstance(res2, int):
+                        total_deleted += res2
+                except Exception as e:
+                    logger.debug(f"file_name 키 기준 삭제 시도 중 경고: {e}")
+
+                logger.info(f"파일명 '{filename}' 관련 문서 청크 삭제 시도 완료. (보고된 삭제 수: {total_deleted})")
+                return total_deleted
             except Exception as e:
                 logger.error(f"파일명으로 문서 삭제 실패: {e}")
-                return 0
+                return total_deleted
     
     def get_vectorstore_status(self) -> str:
         """벡터 저장소 상태 확인 (스레드 안전)"""

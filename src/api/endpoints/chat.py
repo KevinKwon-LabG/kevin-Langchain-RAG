@@ -5,7 +5,7 @@ Ollama 모델과의 대화, 세션 관리 등을 제공합니다.
 
 import logging
 import json
-import requests
+import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, Optional
@@ -131,29 +131,29 @@ async def _generate_ai_response(request: ChatRequest, session, use_rag: bool, us
         else:
             # 일반 AI 응답 생성 (Ollama 직접 호출)
             try:
-                ollama_response = requests.post(
-                    f"{OLLAMA_BASE_URL}/api/generate",
-                    json={
-                        "model": request.model,
-                        "prompt": request.message,
-                        "stream": False,
-                        "options": {
-                            "temperature": getattr(request, 'temperature', settings.default_temperature),
-                            "top_p": getattr(request, 'top_p', settings.default_top_p),
-                            "top_k": getattr(request, 'top_k', settings.default_top_k),
-                            "repeat_penalty": getattr(request, 'repeat_penalty', settings.default_repeat_penalty),
-                            "seed": getattr(request, 'seed', settings.default_seed)
+                async with httpx.AsyncClient(timeout=settings.ollama_timeout) as client:
+                    ollama_response = await client.post(
+                        f"{OLLAMA_BASE_URL}/api/generate",
+                        json={
+                            "model": request.model,
+                            "prompt": request.message,
+                            "stream": False,
+                            "options": {
+                                "temperature": getattr(request, 'temperature', settings.default_temperature),
+                                "top_p": getattr(request, 'top_p', settings.default_top_p),
+                                "top_k": getattr(request, 'top_k', settings.default_top_k),
+                                "repeat_penalty": getattr(request, 'repeat_penalty', settings.default_repeat_penalty),
+                                "seed": getattr(request, 'seed', settings.default_seed)
+                            }
                         }
-                    },
-                    timeout=settings.ollama_timeout
-                )
-                
+                    )
+
                 if ollama_response.status_code == 200:
                     response_data = ollama_response.json()
                     response = response_data.get('response', '응답을 생성할 수 없습니다.')
                 else:
                     response = f"Ollama 서버 오류: {ollama_response.status_code}"
-                    
+
             except Exception as e:
                 response = f"AI 응답 생성 중 오류가 발생했습니다: {str(e)}"
             
@@ -522,7 +522,8 @@ async def get_models():
         # Ollama API에서 모델 목록 가져오기
         from src.config.settings import get_settings
         settings = get_settings()
-        response = requests.get(f"{settings.ollama_base_url}/api/tags", timeout=10)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{settings.ollama_base_url}/api/tags")
         response.raise_for_status()
         data = response.json()
         
@@ -573,7 +574,8 @@ async def get_current_model():
         # Ollama API에서 모델 목록 가져오기
         from src.config.settings import get_settings
         settings = get_settings()
-        response = requests.get(f"{settings.ollama_base_url}/api/tags", timeout=10)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{settings.ollama_base_url}/api/tags")
         response.raise_for_status()
         data = response.json()
         
@@ -586,9 +588,11 @@ async def get_current_model():
             model_status = "unknown"
             try:
                 # 모델이 로드되어 있는지 확인
-                status_response = requests.get(f"{settings.ollama_base_url}/api/show", 
-                                             params={"name": current_model["name"]}, 
-                                             timeout=5)
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    status_response = await client.get(
+                        f"{settings.ollama_base_url}/api/show",
+                        params={"name": current_model["name"]}
+                    )
                 if status_response.status_code == 200:
                     model_status = "loaded"
                 else:
@@ -734,7 +738,8 @@ async def health_check():
         # Ollama 서버 연결 확인
         ollama_status = "unknown"
         try:
-            response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
             if response.status_code == 200:
                 ollama_status = "healthy"
             else:

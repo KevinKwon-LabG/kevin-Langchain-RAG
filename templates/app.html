@@ -4,1155 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ollama 대화형 인터페이스</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            height: calc(100vh - 40px);
-            display: flex;
-            flex-direction: column;
-            transition: all 0.3s ease;
-        }
-
-        .container.developer-mode {
-            max-width: 50%;
-            margin-left: 0;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #2c3e50, #3498db);
-            color: white;
-            padding: 20px 30px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-
-
-
-
-
-        .header h1 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 1rem;
-        }
-
-        .main-layout {
-            display: flex;
-            flex: 1;
-            min-height: 0;
-            transition: all 0.3s ease;
-        }
-
-
-
-        .developer-panel {
-            position: fixed;
-            top: 0;
-            right: -100%;
-            width: 50%;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.95);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            transition: right 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .developer-panel.active {
-            right: 0;
-        }
-
-        .developer-panel-header {
-            background: linear-gradient(135deg, #2c3e50, #34495e);
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            flex-shrink: 0;
-        }
-
-        .developer-panel-header h2 {
-            margin: 0;
-            font-size: 1.2rem;
-            font-weight: 700;
-        }
-
-        .developer-panel-close {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-
-        .developer-panel-close:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .developer-panel-content {
-            flex: 1;
-            padding: 15px;
-            overflow-y: auto;
-            color: white;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            line-height: 1.4;
-        }
-
-        .developer-section {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .developer-section h3 {
-            margin: 0 0 8px 0;
-            color: #3498db;
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-
-        .developer-section pre {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 6px;
-            padding: 12px;
-            overflow-x: auto;
-            font-size: 0.8rem;
-            line-height: 1.3;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            margin: 0;
-        }
-
-        .developer-section code {
-            color: #e74c3c;
-            font-weight: 600;
-        }
-
-        .developer-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 8px;
-            margin-bottom: 10px;
-        }
-
-        .developer-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            padding: 8px 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .developer-card h4 {
-            margin: 0 0 4px 0;
-            color: #f39c12;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .developer-card p {
-            margin: 0;
-            font-size: 0.7rem;
-            line-height: 1.2;
-            opacity: 0.9;
-            font-weight: 500;
-        }
-
-        /* Reference 패널 스타일 */
-        .reference-panel {
-            position: fixed;
-            top: 0;
-            left: -100%;
-            width: 50%;
-            height: 100vh;
-            background: rgba(255, 255, 255, 0.98);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            transition: left 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
-        }
-
-        .reference-panel.active {
-            left: 0;
-        }
-
-        .reference-panel-header {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            flex-shrink: 0;
-        }
-
-        .reference-panel-header h2 {
-            margin: 0;
-            font-size: 1.2rem;
-            font-weight: 700;
-        }
-
-        .reference-panel-close {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-
-        .reference-panel-close:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .reference-panel-content {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            color: #2c3e50;
-        }
-
-        .reference-section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        .reference-section h3 {
-            margin: 0 0 15px 0;
-            color: #9b59b6;
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .upload-area {
-            text-align: center;
-            padding: 20px;
-            border: 2px dashed #9b59b6;
-            border-radius: 8px;
-            background: rgba(155, 89, 182, 0.05);
-        }
-
-        .upload-btn {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 10px 20px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-bottom: 10px;
-        }
-
-        .upload-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(155, 89, 182, 0.3);
-        }
-
-        .upload-btn:disabled {
-            background: linear-gradient(135deg, #bdc3c7, #95a5a6);
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-            opacity: 0.6;
-        }
-
-        /* MCP 패널 스타일 */
-        .mcp-panel {
-            position: fixed;
-            top: 0;
-            left: -100%;
-            width: 50%;
-            height: 100vh;
-            background: rgba(255, 255, 255, 0.98);
-            backdrop-filter: blur(10px);
-            z-index: 1000;
-            transition: left 0.3s ease;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
-        }
-
-        .mcp-panel.active {
-            left: 0;
-        }
-
-        .mcp-panel-header {
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            flex-shrink: 0;
-        }
-
-        .mcp-panel-header h2 {
-            margin: 0;
-            font-size: 1.2rem;
-            font-weight: 700;
-        }
-
-        .mcp-panel-close {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-
-        .mcp-panel-close:hover {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        .mcp-panel-content {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            color: #2c3e50;
-        }
-
-        .mcp-section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        .mcp-section h3 {
-            margin: 0 0 15px 0;
-            color: #3498db;
-            font-size: 1rem;
-            font-weight: 600;
-        }
-
-        .mcp-service {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .mcp-input {
-            flex: 1;
-            padding: 10px 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            transition: border-color 0.3s ease;
-        }
-
-        .mcp-input:focus {
-            outline: none;
-            border-color: #3498db;
-            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
-        }
-
-        .mcp-btn-service {
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 10px 16px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            white-space: nowrap;
-        }
-
-        .mcp-btn-service:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-        }
-
-        .mcp-btn-service:disabled {
-            background: linear-gradient(135deg, #bdc3c7, #95a5a6);
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-            opacity: 0.6;
-        }
-
-        .mcp-result {
-            background: white;
-            border: 1px solid #e1e8ed;
-            border-radius: 6px;
-            padding: 15px;
-            margin-top: 10px;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .mcp-status {
-            background: white;
-            border: 1px solid #e1e8ed;
-            border-radius: 6px;
-            padding: 15px;
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
-
-        .mcp-btn {
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
-        }
-
-        .mcp-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-        }
-
-        .upload-btn:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-
-        .upload-info {
-            font-size: 0.8rem;
-            color: #7f8c8d;
-            margin: 0;
-        }
-
-        .document-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .document-item {
-            background: white;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-            border-radius: 6px;
-            padding: 12px;
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: all 0.3s ease;
-        }
-
-        .document-item:hover {
-            border-color: #9b59b6;
-            box-shadow: 0 2px 8px rgba(155, 89, 182, 0.1);
-        }
-
-        .document-info {
-            flex: 1;
-        }
-
-        .document-name {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 0.9rem;
-            margin-bottom: 4px;
-        }
-
-        .document-meta {
-            font-size: 0.75rem;
-            color: #7f8c8d;
-        }
-
-        .document-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .document-btn {
-            background: none;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 4px 8px;
-            font-size: 0.7rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .document-btn.download {
-            color: #3498db;
-            border-color: #3498db;
-        }
-
-        .document-btn.download:hover {
-            background: #3498db;
-            color: white;
-        }
-
-        .document-btn.delete {
-            color: #e74c3c;
-            border-color: #e74c3c;
-        }
-
-        .document-btn.delete:hover {
-            background: #e74c3c;
-            color: white;
-        }
-
-        .loading {
-            text-align: center;
-            color: #7f8c8d;
-            font-style: italic;
-            padding: 20px;
-        }
-
-        .empty-documents {
-            text-align: center;
-            color: #7f8c8d;
-            padding: 20px;
-        }
-
-        .empty-documents-icon {
-            font-size: 3rem;
-            margin-bottom: 10px;
-            opacity: 0.5;
-        }
-
-        .reset-btn {
-            transition: all 0.3s ease;
-        }
-
-        .reset-btn:hover {
-            background: #c0392b !important;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.3);
-        }
-
-        .reset-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none !important;
-            box-shadow: none !important;
-        }
-
-        .sidebar {
-            width: 300px;
-            background: rgba(248, 249, 250, 0.9);
-            border-right: 1px solid rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
-            flex-shrink: 0;
-            overflow-y: auto;
-            max-height: calc(100vh - 120px);
-        }
-
-        .sidebar-header {
-            padding: 20px;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        .sidebar h3 {
-            color: #2c3e50;
-            margin-bottom: 25px;
-            font-size: 1.2rem;
-        }
-
-        .model-selector {
-            margin-top: 10px;
-            margin-bottom: 20px;
-        }
-
-        .model-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 8px;
-        }
-
-        .model-card {
-            background: white;
-            border-radius: 8px;
-            padding: 12px;
-            border: 2px solid transparent;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .model-card:hover {
-            border-color: #3498db;
-            transform: translateY(-1px);
-        }
-
-        .model-card.selected {
-            border-color: #3498db;
-            background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
-            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-            position: relative;
-        }
-        
-        .model-card.selected::after {
-            content: '✓';
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: #3498db;
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .model-name {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 0.9rem;
-            margin-bottom: 3px;
-        }
-
-        .model-size {
-            font-size: 0.8rem;
-            color: #7f8c8d;
-        }
-
-        .session-list-section {
-            padding: 20px;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-            flex: 1;
-            overflow-y: visible;
-        }
-
-        .session-item {
-            background: white;
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        .session-item:hover {
-            border-color: #3498db;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(52, 152, 219, 0.2);
-        }
-
-        .session-preview {
-            font-size: 0.9rem;
-            color: #2c3e50;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-
-        .session-info-small {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.75rem;
-            color: #7f8c8d;
-        }
-
-        .session-time {
-            color: #95a5a6;
-        }
-
-        .session-count {
-            color: #3498db;
-            font-weight: 500;
-        }
-
-        .no-sessions {
-            text-align: center;
-            color: #95a5a6;
-            font-style: italic;
-            padding: 20px;
-        }
-
-        .chat-controls {
-            padding: 20px;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        .btn {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-bottom: 10px;
-            font-size: 0.9rem;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-        }
-
-        .btn-secondary {
-            background: linear-gradient(135deg, #95a5a6, #7f8c8d);
-            color: white;
-        }
-
-        .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        }
-
-        .settings-section {
-            padding: 20px;
-        }
-
-        .settings-group {
-            margin-bottom: 15px;
-        }
-
-        .settings-group label {
-            display: block;
-            font-weight: 600;
-            color: #34495e;
-            margin-bottom: 5px;
-            font-size: 0.9rem;
-        }
-
-        .settings-group input,
-        .settings-group select,
-        .settings-group textarea {
-            width: 100%;
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 0.9rem;
-        }
-
-        .settings-group textarea {
-            resize: vertical;
-            min-height: 60px;
-        }
-
-        .chat-area {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-        }
-
-        .chat-messages {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            background: rgba(255, 255, 255, 0.5);
-        }
-
-        .message {
-            margin-bottom: 20px;
-            animation: fadeIn 0.3s ease-in;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .message-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .message-role {
-            font-weight: 600;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            margin-right: 10px;
-        }
-
-        .message-role.user {
-            background: #3498db;
-            color: white;
-        }
-
-        .message-role.assistant {
-            background: #2ecc71;
-            color: white;
-        }
-
-        .message-time {
-            font-size: 0.8rem;
-            color: #7f8c8d;
-        }
-
-        .message-content {
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            line-height: 1.6;
-            white-space: pre-wrap;
-        }
-        
-        .message-content strong {
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        
-        .message-content em {
-            font-style: italic;
-            color: #7f8c8d;
-        }
-        
-        .message-content code {
-            background: #f8f9fa;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            color: #e74c3c;
-        }
-        
-        .message-content a {
-            color: #3498db;
-            text-decoration: underline;
-            word-break: break-all;
-        }
-        
-        .message-content a:hover {
-            color: #2980b9;
-            text-decoration: none;
-        }
-
-        .user-message .message-content {
-            background: #e3f2fd;
-            margin-left: 20px;
-        }
-
-        .assistant-message .message-content {
-            background: #f1f8e9;
-            margin-right: 20px;
-        }
-
-
-
-        .chat-input-area {
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.9);
-            border-top: 1px solid rgba(0, 0, 0, 0.1);
-            flex-shrink: 0;
-        }
-
-        .input-container {
-            display: flex;
-            gap: 15px;
-            align-items: flex-end;
-        }
-
-        .chat-input {
-            flex: 1;
-            padding: 15px;
-            border: 2px solid #ecf0f1;
-            border-radius: 12px;
-            font-size: 1rem;
-            resize: vertical;
-            min-height: 50px;
-            max-height: 120px;
-            font-family: inherit;
-        }
-
-        .chat-input:focus {
-            outline: none;
-            border-color: #3498db;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-
-        .send-btn {
-            padding: 15px 25px;
-            background: linear-gradient(135deg, #3498db, #2980b9);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            white-space: nowrap;
-        }
-
-        .send-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
-        }
-
-        .send-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-        .typing-indicator {
-            display: none;
-            padding: 15px;
-            color: #7f8c8d;
-            font-style: italic;
-            text-align: center;
-        }
-
-        .typing-indicator.active {
-            display: block;
-        }
-
-        .session-info {
-            padding: 10px 20px;
-            background: rgba(52, 152, 219, 0.1);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-            font-size: 0.9rem;
-            color: #2c3e50;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .session-info-text {
-            flex: 1;
-        }
-
-        .session-buttons {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
-
-        /* 공통 버튼 스타일 */
-        .session-btn {
-            border: none;
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            height: 36px;
-            min-height: 36px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            white-space: nowrap;
-        }
-
-        .mcp-checkbox-container {
-            display: none; /* MCP 사용 체크박스 숨김 */
-            align-items: center;
-            gap: 6px;
-            background: rgba(52, 152, 219, 0.1);
-            padding: 8px 16px;
-            border-radius: 6px;
-            border: 1px solid rgba(52, 152, 219, 0.2);
-            height: 36px;
-            min-height: 36px;
-        }
-
-        .mcp-checkbox-container input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            accent-color: #3498db;
-        }
-
-        .mcp-checkbox-container label {
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: #2c3e50;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-
-        .reference-btn {
-            background: linear-gradient(135deg, #9b59b6, #8e44ad);
-            color: white;
-            box-shadow: 0 2px 8px rgba(155, 89, 182, 0.3);
-        }
-
-        .reference-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(155, 89, 182, 0.4);
-        }
-
-        .reference-btn.active {
-            background: linear-gradient(135deg, #27ae60, #229954);
-            box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
-        }
-
-        .developer-mode-btn {
-            background: linear-gradient(135deg, #e74c3c, #c0392b);
-            color: white;
-            box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
-            position: relative;
-        }
-
-        .developer-mode-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
-        }
-
-        .developer-mode-btn.active {
-            background: linear-gradient(135deg, #27ae60, #229954);
-            box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
-            }
-            50% {
-                box-shadow: 0 2px 8px rgba(39, 174, 96, 0.6);
-            }
-            100% {
-                box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
-            }
-        }
-
-        .empty-chat {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            flex: 1;
-            color: #7f8c8d;
-            text-align: center;
-        }
-
-        .empty-chat-icon {
-            font-size: 4rem;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        .collapsible-section {
-            margin-bottom: 15px;
-        }
-
-        .collapsible-header,
-        .sidebar-header h3,
-        .session-list-section .collapsible-header {
-            font-family: inherit;
-            font-size: 1.05rem;
-            font-weight: 700;
-            color: #2c3e50;
-            background: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 0;
-            user-select: none;
-            cursor: pointer;
-        }
-        .sidebar-header h3 {
-            margin-bottom: 0;
-            background: none;
-            padding: 0;
-            border-radius: 0;
-        }
-        
-        .settings-section .collapsible-header {
-            text-align: right;
-        }
-
-        .collapsible-content {
-            height: 0;
-            overflow: hidden;
-            transition: height 0.3s ease;
-        }
-
-        .collapsible-content.expanded {
-            height: auto;
-            padding-top: 10px;
-            overflow: visible;
-        }
-
-        @media (max-width: 1024px) {
-            .sidebar {
-                width: 250px;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .main-layout {
-                flex-direction: column;
-            }
-            
-            .sidebar {
-                width: 100%;
-                height: auto;
-                max-height: 300px;
-                order: 2;
-            }
-            
-            .chat-area {
-                order: 1;
-                min-height: 400px;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}">
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>💬 LAB.G AI 대화형 인터페이스</h1>
-            
-            
-
         </div>
-
         <div class="main-layout">
             <!-- 사이드바 -->
             <div class="sidebar">
                 <div class="sidebar-header">
                     <h3>🤖 모델 선택</h3>
                     <div class="model-selector">
-                                            <div class="model-grid" id="modelGrid">
+                        <div class="model-grid" id="modelGrid">
                         <!-- 모델 카드들이 여기에 동적으로 생성됩니다 -->
-                    </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1172,7 +39,7 @@
                 <!-- 고급 설정 (접을 수 있음) -->
                 <div class="settings-section">
                     <div class="collapsible-section">
-                        <div class="collapsible-header" onclick="toggleCollapsible(this)" style="text-align: right;">⚙️ 고급 설정</div>
+                        <div class="collapsible-header text-right" onclick="toggleCollapsible(this)">⚙️ 고급 설정</div>
                         <div class="collapsible-content">
                             <div class="settings-group">
                                 <label for="temperature">Temperature (0-2)</label>
@@ -1191,12 +58,7 @@
 
                             <div class="settings-group">
                                 <label for="num_predict">최대 토큰 수</label>
-                                <select id="num_predict">
-                                    <option value="256">256</option>
-                                    <option value="512">512</option>
-                                    <option value="1024" selected>1024</option>
-                                    <option value="2048">2048</option>
-                                </select>
+                                <select id="num_predict"></select>
                             </div>
 
                             <div class="settings-group">
@@ -1268,7 +130,7 @@
             <div class="reference-section">
                 <h3>📁 문서 업로드</h3>
                 <div class="upload-area">
-                    <input type="file" id="documentUpload" accept=".txt,.pdf,.docx,.md,.json,.csv,.xlsx,.xls" style="display: none;">
+                    <input type="file" id="documentUpload" accept=".txt,.pdf,.docx,.md,.json,.csv,.xlsx,.xls" class="hidden">
                     <button class="upload-btn" onclick="document.getElementById('documentUpload').click()">
                         📤 문서 업로드
                     </button>
@@ -1333,11 +195,11 @@
                 <h3>⚙️ MCP 설정</h3>
                 <div class="mcp-setting">
                     <label for="mcpDecisionMethod">결정 방식:</label>
-                    <select id="mcpDecisionMethod" class="mcp-input" style="margin-top: 8px;">
+                    <select id="mcpDecisionMethod" class="mcp-input mt-8">
                         <option value="ai">AI 기반</option>
                         <option value="keyword">키워드 기반</option>
                     </select>
-                    <p style="font-size: 0.8rem; color: #7f8c8d; margin-top: 8px;">
+                    <p class="text-sm text-muted mt-8">
                         <strong>키워드 기반:</strong> 미리 정의된 키워드 매칭으로 MCP 서비스 사용 여부 결정<br>
                         <strong>AI 기반:</strong> AI 모델을 사용하여 MCP 서비스 사용 여부 결정
                     </p>
@@ -1362,14 +224,14 @@
         <div class="developer-panel-content">
             <div class="developer-section">
                 <h3>📊 시스템 정보</h3>
-                <div class="developer-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="developer-grid grid-cols-3">
                     <div class="developer-card">
                         <h4>서버</h4>
                         <p id="devServerStatus">확인 중...</p>
                     </div>
                     <div class="developer-card">
                         <h4>응답</h4>
-                        <p id="devResponseStatus">대기 중</p>
+                        <p id="devResponseStatus" class="text-white">대기 중</p>
                     </div>
                     <div class="developer-card">
                         <h4>AI 모델</h4>
@@ -1384,7 +246,7 @@
 
             <div class="developer-section" id="resourceSection">
                 <h3>💻 리소스 사용량</h3>
-                <div class="developer-grid" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="developer-grid grid-cols-3">
                     <div class="developer-card">
                         <h4>CPU</h4>
                         <p id="devCpuUsage">0%</p>
@@ -1429,19 +291,19 @@
                 <div class="developer-grid">
                     <div class="developer-card">
                         <h4>서버 상태 확인</h4>
-                        <p><button onclick="checkServerStatus()" style="background: #3498db; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">확인</button></p>
+                        <p><button onclick="checkServerStatus()" class="btn-small btn-blue">확인</button></p>
                     </div>
                     <div class="developer-card">
                         <h4>세션 새로고침</h4>
-                        <p><button onclick="loadSessions()" style="background: #e74c3c; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">새로고침</button></p>
+                        <p><button onclick="loadSessions()" class="btn-small btn-red">새로고침</button></p>
                     </div>
                     <div class="developer-card">
                         <h4>설정 새로고침</h4>
-                        <p><button onclick="loadSettingsInfo()" style="background: #f39c12; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">새로고침</button></p>
+                        <p><button onclick="loadSettingsInfo()" class="btn-small btn-orange">새로고침</button></p>
                     </div>
                     <div class="developer-card">
                         <h4>로그 지우기</h4>
-                        <p><button onclick="clearRequestLog()" style="background: #95a5a6; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">지우기</button></p>
+                        <p><button onclick="clearRequestLog()" class="btn-small btn-gray">지우기</button></p>
                     </div>
                 </div>
             </div>
@@ -1451,13 +313,13 @@
                 <div class="developer-grid">
                     <div class="developer-card">
                         <h4>벡터 스토어 초기화</h4>
-                        <p style="font-size: 0.8rem; color: #7f8c8d; margin-bottom: 8px;">모든 벡터 데이터와 업로드된 문서를 삭제합니다.</p>
-                        <p><button onclick="resetAllData()" style="background: #e74c3c; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: bold;">🚨 전체 초기화</button></p>
+                        <p class="text-sm text-white mb-8">모든 벡터 데이터와 업로드된 문서를 삭제합니다.</p>
+                        <p><button onclick="resetAllData()" class="btn-small btn-red fw-bold px-12 py-8">🚨 전체 초기화</button></p>
                     </div>
                     <div class="developer-card">
                         <h4>벡터 스토어 상태</h4>
-                        <p id="vectorstoreStatus" style="font-size: 0.8rem; color: #2c3e50;">확인 중...</p>
-                        <p><button onclick="checkVectorstoreStatus()" style="background: #27ae60; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">상태 확인</button></p>
+                        <p id="vectorstoreStatus" class="text-sm text-white">확인 중...</p>
+                        <p><button onclick="checkVectorstoreStatus()" class="btn-small btn-green">상태 확인</button></p>
                     </div>
                 </div>
             </div>
@@ -1491,6 +353,10 @@
                 console.log('모델 목록 로드 시작...');
                 await loadModels();
                 
+                // 프리셋 로드 (최대 토큰 등)
+                console.log('프리셋 로드 시작...');
+                await loadPresets();
+
                 // 세션 로드
                 console.log('세션 로드 시작...');
                 await loadSessions();
@@ -1576,6 +442,34 @@
             console.log('모델 그리드 생성 완료. 총 카드 수:', modelGrid.children.length);
         }
 
+        // 프리셋 로드 및 UI 반영
+        async function loadPresets() {
+            try {
+                const response = await fetch('/api/settings/presets');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                const numPredictSelect = document.getElementById('num_predict');
+                if (numPredictSelect) {
+                    numPredictSelect.innerHTML = '';
+                    const presets = data.max_tokens_presets || [1024, 2048, 4096, 6144, 8192];
+                    const defaultValue = data.max_tokens_default || (presets.length > 0 ? presets[0] : 1024);
+                    presets.forEach((value) => {
+                        const option = document.createElement('option');
+                        option.value = value;
+                        option.textContent = value;
+                        if (value === defaultValue) {
+                            option.selected = true;
+                        }
+                        numPredictSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('프리셋 로드 실패:', error);
+            }
+        }
+
         // 모델 선택
         async function selectModel(modelName, cardElement) {
             // 이전 선택 해제
@@ -1645,9 +539,9 @@
             const modelGrid = document.getElementById('modelGrid');
             if (modelGrid) {
                 modelGrid.innerHTML = `
-                    <div style="color: #e74c3c; padding: 15px; text-align: center; border: 1px solid #e74c3c; border-radius: 8px; background: #fdf2f2;">
-                        <div style="font-weight: bold; margin-bottom: 5px;">⚠️ 모델 로드 실패</div>
-                        <div style="font-size: 0.9rem;">${message}</div>
+                    <div class="alert-box alert-error">
+                        <div class="fw-bold mb-5">⚠️ 모델 로드 실패</div>
+                        <div class="fs-09">${message}</div>
                     </div>
                 `;
             }
@@ -2090,7 +984,7 @@
                     }
                 }
                 
-                const linkHtml = `<a href="${url}" target="_blank" style="color: #3498db; text-decoration: underline; cursor: pointer; word-break: break-all;" title="${url}">${displayText}</a>`;
+                const linkHtml = `<a href="${url}" target="_blank" class="link-external" title="${url}">${displayText}</a>`;
                 
                 // 모든 동일한 URL을 클릭 가능한 링크로 교체
                 const urlRegex = new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
@@ -2635,10 +1529,10 @@
                     const statusElement = document.getElementById('mcpStatus');
                     if (statusElement) {
                         statusElement.innerHTML = `
-                            <div style="color: #27ae60; font-weight: bold; margin-bottom: 10px;">
+                            <div class="color-success fw-bold mb-10">
                                 ✅ ${data.message}
                             </div>
-                            <div style="font-size: 0.9rem; color: #2c3e50;">
+                            <div class="fs-09 color-info">
                                 현재 방식: ${data.current_method === 'keyword' ? '키워드 기반' : 'AI 기반'}
                             </div>
                         `;
@@ -2653,7 +1547,7 @@
                 const statusElement = document.getElementById('mcpStatus');
                 if (statusElement) {
                     statusElement.innerHTML = `
-                        <div style="color: #e74c3c; font-weight: bold;">
+                        <div class="color-error fw-bold">
                             ❌ MCP 결정 방식 변경 실패
                         </div>
                     `;
@@ -2888,8 +1782,29 @@
             documentList.innerHTML = '<div class="loading">문서 목록을 불러오는 중...</div>';
             
             try {
-                const response = await fetch('/api/documents');
+                const response = await fetch('/api/documents', {
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    let errorDetail = '';
+                    try {
+                        const errBody = await response.json();
+                        errorDetail = errBody?.detail || errBody?.error || JSON.stringify(errBody);
+                    } catch (_) {
+                        try {
+                            errorDetail = await response.text();
+                        } catch (__) {
+                            errorDetail = '';
+                        }
+                    }
+                    throw new Error(errorDetail || `HTTP ${response.status}`);
+                }
+
                 const documents = await response.json();
+                if (!Array.isArray(documents)) {
+                    throw new Error('응답 형식이 올바르지 않습니다.');
+                }
                 
                 if (documents.length === 0) {
                     documentList.innerHTML = `
@@ -2948,7 +1863,7 @@
                 
             } catch (error) {
                 documentList.innerHTML = `
-                    <div class="loading" style="color: #e74c3c;">
+                    <div class="loading color-error">
                         문서 목록을 불러오는 중 오류가 발생했습니다: ${error.message}
                     </div>
                 `;
@@ -3190,24 +2105,24 @@
                     
                     if (serverStatus.status === 'connected') {
                         statusDiv.innerHTML = `
-                            <div style="color: #27ae60; font-weight: bold; margin-bottom: 10px;">
+                            <div class="color-success fw-bold mb-10">
                                 ✅ MCP 서버 연결됨
                             </div>
-                            <div style="font-size: 0.9rem; color: #2c3e50;">
+                            <div class="fs-09 color-info">
                                 <strong>서버:</strong> ${serverStatus.server_url}<br>
                                 <strong>응답시간:</strong> ${serverStatus.response_time.toFixed(3)}초
                             </div>
                         `;
                     } else {
                         statusDiv.innerHTML = `
-                            <div style="color: #e74c3c; font-weight: bold; margin-bottom: 10px;">
+                            <div class="color-error fw-bold mb-10">
                                 ❌ MCP 서버 연결 실패
                             </div>
-                            <div style="font-size: 0.9rem; color: #2c3e50;">
+                            <div class="fs-09 color-info">
                                 <strong>서버:</strong> ${serverStatus.server_url}<br>
                                 <strong>오류:</strong> ${serverStatus.error}
                             </div>
-                            <div style="font-size: 0.8rem; color: #7f8c8d; margin-top: 10px;">
+                            <div class="text-sm text-muted mt-10">
                                 💡 MCP 서버가 실행되지 않았거나 연결할 수 없습니다.<br>
                                 서버 상태를 확인하고 다시 시도해주세요.
                             </div>
@@ -3219,10 +2134,10 @@
             } catch (error) {
                 console.error('MCP 상태 로드 실패:', error);
                 statusDiv.innerHTML = `
-                    <div style="color: #e74c3c; font-weight: bold;">
+                    <div class="color-error fw-bold">
                         ❌ MCP 상태 확인 실패
                     </div>
-                    <div style="font-size: 0.8rem; color: #7f8c8d; margin-top: 10px;">
+                    <div class="text-sm text-muted mt-10">
                         💡 MCP 서버 연결을 확인할 수 없습니다.
                     </div>
                 `;
@@ -3540,25 +2455,16 @@
             
             // 새로운 처리 상태 표시 추가
             const statusDiv = document.createElement('div');
-            statusDiv.className = 'processing-status';
-            statusDiv.style.cssText = `
-                background: linear-gradient(135deg, #ff6b6b, #ee5a24);
-                color: white;
-                padding: 15px;
-                border-radius: 10px;
-                margin-bottom: 15px;
-                text-align: center;
-                box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
-            `;
+            statusDiv.className = 'doc-processing center p-15 rounded-8';
             
             statusDiv.innerHTML = `
-                <div style="font-weight: bold; margin-bottom: 8px;">
+                <div class="fw-bold mb-8">
                     🔄 문서 처리 중
                 </div>
-                <div style="font-size: 0.9em; opacity: 0.9;">
+                <div class="fs-09 opacity-90">
                     처리 중인 문서: ${processingCount}개 | 대기 중: ${queueSize}개
                 </div>
-                <div style="font-size: 0.8em; opacity: 0.8; margin-top: 5px;">
+                <div class="text-sm opacity-80 mt-5">
                     완료까지 잠시 기다려주세요...
                 </div>
             `;

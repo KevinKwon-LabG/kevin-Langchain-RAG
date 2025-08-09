@@ -68,8 +68,8 @@ class WordEmbeddingService:
         self.chunk_overlap = chunk_overlap or settings.chunk_overlap
         self.vector_db_path = vector_db_path or settings.chroma_persist_directory
         
-        # 임베딩 모델 초기화
-        self.embedding_model = SentenceTransformer(embedding_model_name)
+        # 임베딩 모델 초기화 (설정/인자 반영)
+        self.embedding_model = SentenceTransformer(self.embedding_model_name)
         
         # 벡터 DB 초기화
         self._init_vector_db()

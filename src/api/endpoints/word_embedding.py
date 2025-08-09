@@ -81,9 +81,9 @@ async def upload_word_document(
         처리 결과
     """
     try:
-        # 파일 확장자 검증
-        if not file.filename.lower().endswith(('.docx', '.doc')):
-            raise HTTPException(status_code=400, detail="워드 문서(.docx, .doc)만 업로드 가능합니다.")
+        # 파일 확장자 검증 (.doc 차단, .docx만 허용)
+        if not file.filename.lower().endswith('.docx'):
+            raise HTTPException(status_code=400, detail="워드 문서(.docx)만 업로드 가능합니다.")
         
         # 임시 파일 저장
         temp_dir = "./data/temp"

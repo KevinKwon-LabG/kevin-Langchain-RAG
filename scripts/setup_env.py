@@ -194,8 +194,8 @@ LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
 # MCP 서버 설정
 # =============================================================================
 MCP_SERVER_HOST=1.237.52.240
-MCP_SERVER_PORT=11045
-MCP_SERVER_URL=http://1.237.52.240:11045
+MCP_SERVER_PORT=20010
+MCP_SERVER_URL=http://1.237.52.240:20010
 MCP_TIMEOUT=30
 MCP_MAX_RETRIES=3
 MCP_ENABLED=true
@@ -248,7 +248,7 @@ def customize_env_file():
         # MCP 서버 설정
         print("\n🔗 MCP 서버 설정")
         mcp_host = input(f"MCP 서버 호스트 (기본값: 1.237.52.240): ").strip() or "1.237.52.240"
-        mcp_port = input(f"MCP 서버 포트 (기본값: 11045): ").strip() or "11045"
+        mcp_port = input(f"MCP 서버 포트 (기본값: 20010): ").strip() or "20010"
         mcp_url = f"http://{mcp_host}:{mcp_port}"
         
         # 기본 모델 설정
@@ -278,8 +278,8 @@ def customize_env_file():
         content = content.replace("SERVICE_URL=http://1.237.52.240:11040", f"SERVICE_URL={service_url}")
         content = content.replace("OLLAMA_BASE_URL=http://1.237.52.240:11434", f"OLLAMA_BASE_URL={ollama_url}")
         content = content.replace("MCP_SERVER_HOST=1.237.52.240", f"MCP_SERVER_HOST={mcp_host}")
-        content = content.replace("MCP_SERVER_PORT=11045", f"MCP_SERVER_PORT={mcp_port}")
-        content = content.replace("MCP_SERVER_URL=http://1.237.52.240:11045", f"MCP_SERVER_URL={mcp_url}")
+        content = content.replace("MCP_SERVER_PORT=20010", f"MCP_SERVER_PORT={mcp_port}")
+        content = content.replace("MCP_SERVER_URL=http://1.237.52.240:20010", f"MCP_SERVER_URL={mcp_url}")
         content = content.replace("DEFAULT_MODEL=gemma3:12b-it-qat", f"DEFAULT_MODEL={default_model}")
         content = content.replace("DEFAULT_USE_RAG=true", f"DEFAULT_USE_RAG={use_rag}")
         content = content.replace("DEFAULT_TOP_K_DOCUMENTS=5", f"DEFAULT_TOP_K_DOCUMENTS={top_k_docs}")

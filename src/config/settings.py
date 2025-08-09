@@ -85,6 +85,20 @@ class Settings(BaseSettings):
     default_use_rag: bool = True
     default_top_k_documents: int = 5
     default_similarity_threshold: float = 0.85  # KURE 임베딩 모델에 적합한 엄격한 임계값
+
+    # 로컬/외부 RAG 평균 점수 임계값 (env.settings에서 주입)
+    min_avg_score_for_rag_local: float = 0.96
+    min_avg_score_for_rag_external: float = 0.96
+
+    # 로컬 RAG 컨텍스트 구성/절단 규칙
+    local_max_context_chunks: int = 4
+    local_max_context_length: int = 1500
+    local_chunk_truncate_length: int = 500
+
+    # 외부 RAG 컨텍스트 구성/절단 규칙
+    external_max_context_chunks: int = 4
+    external_max_context_length: int = 1500
+    external_chunk_truncate_length: int = 500
     
     # =============================================================================
     # 시스템 프롬프트 설정
@@ -160,6 +174,8 @@ class Settings(BaseSettings):
     max_tokens_max: int = 8192
     max_tokens_step: int = 100
     max_tokens_presets: List[int] = [1024, 2048, 4096, 6144, 8192]
+    # UI 기본 선택값 (env.settings의 MAX_TOKENS_DEFAULT로 설정 가능)
+    max_tokens_default: int = 1024
     
     @field_validator('max_tokens_presets', mode='before')
     @classmethod
@@ -308,8 +324,8 @@ class Settings(BaseSettings):
     # MCP 서버 설정
     # =============================================================================
     mcp_server_host: str = "1.237.52.240"
-    mcp_server_port: str = "11045"
-    mcp_server_url: str = "http://1.237.52.240:11045"
+    mcp_server_port: str = "20010"
+    mcp_server_url: str = "http://1.237.52.240:20010"
     mcp_timeout: str = "30"
     mcp_max_retries: str = "3"
     mcp_enabled: str = "true"
@@ -511,6 +527,10 @@ class Settings(BaseSettings):
     def get_max_tokens_presets(self) -> List[int]:
         """Max Tokens 프리셋을 반환합니다."""
         return self.max_tokens_presets
+
+    def get_default_max_tokens(self) -> int:
+        """Max Tokens 기본값을 반환합니다."""
+        return self.max_tokens_default
     
     def get_repeat_penalty_presets(self) -> List[float]:
         """Repeat Penalty 프리셋을 반환합니다."""
@@ -609,7 +629,15 @@ class Settings(BaseSettings):
             "rag": {
                 "enabled": self.default_use_rag,
                 "top_k_documents": self.default_top_k_documents,
-                "similarity_threshold": self.default_similarity_threshold
+                "similarity_threshold": self.default_similarity_threshold,
+                "min_avg_score_for_rag_local": self.min_avg_score_for_rag_local,
+                "min_avg_score_for_rag_external": self.min_avg_score_for_rag_external,
+                "local_max_context_chunks": self.local_max_context_chunks,
+                "local_max_context_length": self.local_max_context_length,
+                "local_chunk_truncate_length": self.local_chunk_truncate_length,
+                "external_max_context_chunks": self.external_max_context_chunks,
+                "external_max_context_length": self.external_max_context_length,
+                "external_chunk_truncate_length": self.external_chunk_truncate_length
             },
             "chroma_db": {
                 "mode": self.chroma_mode,

@@ -18,7 +18,8 @@ class WordProcessor:
     """워드 문서 텍스트 추출 클래스"""
     
     def __init__(self):
-        self.supported_formats = ['.docx', '.doc']
+        # .doc은 미지원으로 전환, .docx만 허용
+        self.supported_formats = ['.docx']
     
     def extract_text_from_word(self, file_path: str) -> str:
         """

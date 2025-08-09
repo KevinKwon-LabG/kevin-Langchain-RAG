@@ -71,6 +71,14 @@ async def shutdown_event():
         if hasattr(rag_service, 'external_rag_service'):
             rag_service.external_rag_service.stop_health_check()
             logger.info("외부 RAG 서비스 헬스 체크 중지됨")
+        # 문서 처리 스레드 안전 종료
+        try:
+            from src.services.document_service import document_service
+            if hasattr(document_service, 'shutdown'):
+                document_service.shutdown()
+                logger.info("문서 처리 서비스 종료됨")
+        except Exception as e:
+            logger.error(f"문서 처리 서비스 종료 실패: {e}")
     except Exception as e:
         logger.error(f"외부 RAG 서비스 헬스 체크 중지 실패: {e}")
 

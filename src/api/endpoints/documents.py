@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import logging
 from datetime import datetime
+import threading
 import asyncio
 
 from src.services.document_service import document_service
@@ -23,6 +24,7 @@ router = APIRouter()
 
 # 업로드 디렉토리 설정
 UPLOAD_DIR = "static/RAG"
+# .doc는 명시적으로 차단하고 .docx만 허용
 ALLOWED_EXTENSIONS = {'.txt', '.pdf', '.docx', '.md', '.json', '.csv', '.xlsx', '.xls'}
 
 class DocumentInfo(BaseModel):
@@ -173,7 +175,50 @@ async def upload_document(file: UploadFile = File(...)):
             file_extension = get_file_extension(filename).lower()
             if file_extension == '.pdf':
                 logger.info(f"PDF 문서 전처리 시작: {filename}")
+            # .doc은 업로드 차단 (이 단계까지 오지 않도록 ALLOWED_EXTENSIONS에서 제외되어 있지만, 이중 방어)
+            if file_extension == '.doc':
+                raise HTTPException(status_code=400, detail=".doc 형식은 지원하지 않습니다. .docx로 변환 후 업로드해주세요.")
             
+            # .docx인 경우 Word 전용 파이프라인으로 위임 처리
+            if file_extension == '.docx':
+                from src.api.endpoints.word_embedding import get_word_embedding_service
+                service = get_word_embedding_service()
+                # Word 전용 서비스는 임시 파일 기반 처리이므로 그대로 경로 전달
+                result = service.process_word_document(file_path, {
+                    "source": "upload",
+                    "upload_time": datetime.now().isoformat(),
+                    "file_size": file.size,
+                    "file_type": file_extension
+                })
+                logger.info(f"워드 전용 파이프라인 처리 완료: {filename} -> chunks: {result.get('total_chunks', 0)}")
+                # 고유 식별자 생성 (파일명 기반)
+                doc_id = f"word::{filename}"
+                # 처리 상태 기록 후 즉시 응답 (비동기 큐 미사용 경로)
+                processing_documents[filename] = {
+                    "status": "completed",
+                    "doc_id": doc_id,
+                    "completed_at": datetime.now().isoformat(),
+                    "filename": filename,
+                    "file_size": file.size,
+                    "file_type": file_extension,
+                    "text_length": result.get("total_tokens", 0),
+                    "final_status": "completed"
+                }
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "message": "워드(.docx) 문서가 전용 파이프라인으로 처리되었습니다.",
+                        "filename": filename,
+                        "doc_id": doc_id,
+                        "status": "completed",
+                        "file_size": file.size,
+                        "file_type": file_extension,
+                        "total_chunks": result.get("total_chunks", 0),
+                        "total_tokens": result.get("total_tokens", 0),
+                        "text_length": result.get("total_tokens", 0)
+                    }
+                )
+
             content = document_service.load_document(file_path)
             
             if not content.strip():
@@ -192,7 +237,48 @@ async def upload_document(file: UploadFile = File(...)):
                 "text_length": len(content)
             }
             
-            # 비동기 처리 시작
+            # 비동기 처리 시작 (파일명을 캡처하는 콜백 래퍼 사용)
+            def _completion_callback(success: bool, doc_id: Optional[str], error: Optional[str], target_filename: str = filename):
+                try:
+                    if target_filename not in processing_documents:
+                        logger.warning(f"처리 완료 콜백: 상태 테이블에 파일을 찾을 수 없음: {target_filename}")
+                        return
+                    if success:
+                        processing_documents[target_filename]["status"] = "completed"
+                        processing_documents[target_filename]["doc_id"] = doc_id
+                        processing_documents[target_filename]["completed_at"] = datetime.now().isoformat()
+                        processing_documents[target_filename]["final_status"] = "completed"
+                        # RAG 문서 자동 재로드
+                        try:
+                            logger.info(f"문서 '{target_filename}' 처리 완료 후 RAG 자동 재로드 시작")
+                            rag_result = rag_service.reload_rag_documents()
+                            logger.info(f"RAG 자동 재로드 완료: {rag_result}")
+                        except Exception as e:
+                            logger.error(f"RAG 자동 재로드 실패: {e}")
+                        # 60초 후 목록에서 제거
+                        def _remove_later(fname: str = target_filename):
+                            import time
+                            time.sleep(60)
+                            if fname in processing_documents:
+                                del processing_documents[fname]
+                                logger.info(f"처리 완료된 문서 '{fname}'을 목록에서 제거했습니다.")
+                        threading.Thread(target=_remove_later, daemon=True).start()
+                    else:
+                        processing_documents[target_filename]["status"] = "failed"
+                        processing_documents[target_filename]["error"] = error
+                        processing_documents[target_filename]["failed_at"] = datetime.now().isoformat()
+                        processing_documents[target_filename]["final_status"] = "failed"
+                        # 60초 후 목록에서 제거
+                        def _remove_failed_later(fname: str = target_filename):
+                            import time
+                            time.sleep(60)
+                            if fname in processing_documents:
+                                del processing_documents[fname]
+                                logger.info(f"처리 실패한 문서 '{fname}'을 목록에서 제거했습니다.")
+                        threading.Thread(target=_remove_failed_later, daemon=True).start()
+                except Exception as e:
+                    logger.error(f"처리 완료 콜백 처리 중 오류: {e}")
+
             doc_id = document_service.process_document(
                 content=content,
                 filename=filename,
@@ -203,7 +289,7 @@ async def upload_document(file: UploadFile = File(...)):
                     "text_length": len(content),
                     "upload_time": datetime.now().isoformat()
                 },
-                callback=document_processing_callback
+                callback=_completion_callback
             )
             
             return JSONResponse(
@@ -261,9 +347,11 @@ async def get_processing_documents() -> Dict[str, Any]:
     처리 중인 문서 목록을 반환합니다.
     """
     try:
+        # 실제로 진행 중인 문서만 반환 (완료/실패 항목 제외)
+        active_docs = {fn: st for fn, st in processing_documents.items() if st.get("status") == "processing"}
         return {
-            "processing_documents": processing_documents,
-            "count": len(processing_documents)
+            "processing_documents": active_docs,
+            "count": len(active_docs)
         }
     except Exception as e:
         logger.error(f"처리 중인 문서 목록 조회 실패: {e}")
@@ -278,9 +366,11 @@ async def check_document_status(filename: str) -> Dict[str, Any]:
         # 1. 처리 중인 문서 목록에서 확인
         if filename in processing_documents:
             status = processing_documents[filename]
+            # 상위 상태는 최종 상태가 있으면 그것을, 없으면 현재 상태를 반영
+            top_level_status = status.get("final_status") or status.get("status", "processing")
             return {
                 "filename": filename,
-                "status": "processing",
+                "status": top_level_status,
                 "processing_status": status,
                 "in_processing_list": True
             }

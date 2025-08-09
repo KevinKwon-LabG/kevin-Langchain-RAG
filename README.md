@@ -114,7 +114,7 @@ ollama/
 
 ### 7. **웹 검색 서비스** (`src/services/web_search_service.py`)
 - 웹 검색 기능 제공
-- DuckDuckGo API 연동
+- 구글 검색 API 연동
 - 검색 결과 포맷팅 및 요약
 
 ## 🛠️ 기술 스택
@@ -453,14 +453,6 @@ pytest tests/
 pytest --cov=src tests/
 ```
 
-## 📚 추가 문서
-
-- [서비스 분리 아키텍처](docs/README_SERVICE_ARCHITECTURE.md) - 새로운 서비스 분리 구조 설명
-- [RAG 시스템 가이드](docs/README_RAG.md)
-- [의사결정 서비스 문서](docs/README_DECISION_SERVICE.md)
-- [날씨 시스템 문서](docs/README_WEATHER_SYSTEM.md)
-- [컨텍스트 관리 가이드](docs/README_CONTEXT_MANAGEMENT.md)
-
 ## 🤝 기여
 
 1. Fork the repository
@@ -475,6 +467,6 @@ pytest --cov=src tests/
 
 ---
 
-**개발자**: Ollama 대화형 인터페이스 팀  
-**버전**: 1.0.0  
-**최종 업데이트**: 2024년 12월 
+**개발자**: Lab Genomics IT DIvision
+**버전**: 1.1.0  
+**최종 업데이트**: 2025년 8월 

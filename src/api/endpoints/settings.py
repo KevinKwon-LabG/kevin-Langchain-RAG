@@ -158,6 +158,7 @@ async def get_all_presets():
             "top_p_presets": settings.get_top_p_presets(),
             "top_k_presets": settings.get_top_k_presets(),
             "max_tokens_presets": settings.get_max_tokens_presets(),
+            "max_tokens_default": settings.get_default_max_tokens(),
             "repeat_penalty_presets": settings.get_repeat_penalty_presets(),
             "rag_top_k_presets": settings.get_rag_top_k_presets(),
             "timestamp": datetime.now().isoformat()

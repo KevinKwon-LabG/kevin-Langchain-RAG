@@ -6,7 +6,7 @@ Ollama 모델 관리 및 조회를 위한 API를 제공합니다.
 import logging
 from fastapi import APIRouter, HTTPException
 from datetime import datetime
-import requests
+import httpx
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -27,7 +27,8 @@ async def get_models():
         from src.config.settings import get_settings
         settings = get_settings()
 
-        response = requests.get(f"{settings.ollama_base_url}/api/ps", timeout=10)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{settings.ollama_base_url}/api/ps")
         response.raise_for_status()
         data = response.json() or {}
 
